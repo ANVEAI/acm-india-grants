@@ -1214,7 +1214,7 @@ EXPORT_COLUMNS = [
 # RFG_DETAILS columns, joined in for RFG rows (blank for Travel).
 EXPORT_RFG_COLUMNS = [
     ("SCHEME", "RFG Scheme"),
-    ("CORRESPONDENCE_EMAIL", "RFG Correspondence Email"),
+    ("CORRESPONDENCE_EMAIL", "RFG Preferred Email"),
     ("DEPARTMENTS", "RFG Department(s)"),
     ("AFFILIATION_STATUS", "RFG Affiliation Status"),
     ("STUDENT_TYPE", "RFG Student Type"),
