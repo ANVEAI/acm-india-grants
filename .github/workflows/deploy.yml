@@ -1,0 +1,132 @@
+name: Deploy to Cloud Run
+
+# Every push to main goes to production. To make that safe the new revision is
+# deployed with NO traffic first, health-checked on its own tagged URL, and only
+# promoted once it answers. A broken push therefore fails the workflow and
+# leaves the previous revision serving, instead of taking the portal down.
+#
+# NOTE ON SCHEMA CHANGES: this project has no Django migrations for the business
+# tables -- schema is hand-applied SQL (see HANDOFF.md). This pipeline never
+# touches the database. Any change needing a new column must have its SQL
+# applied to Cloud SQL BEFORE the code is pushed, or the health check fails and
+# the deploy is held back.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGION: asia-south1
+  SERVICE: stg-app
+  IMAGE: asia-south1-docker.pkg.dev/student-travel-grant-2026/stg/app
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/730778859721/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: gh-deployer@student-travel-grant-2026.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        id: build
+        run: |
+          TAG="git-${GITHUB_SHA::7}"
+          docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$TAG"
+          docker push "$IMAGE:latest"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Record the revision currently serving
+        id: current
+        run: |
+          PREV=$(gcloud run services describe "$SERVICE" --region="$REGION" \
+                  --format='value(status.traffic[0].revisionName)')
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+          echo "Currently serving: $PREV"
+
+      - name: Deploy new revision with NO traffic
+        run: |
+          # Only the image is given, so Cloud Run carries over the existing env
+          # vars, Cloud SQL connection, GCSFuse mount and runtime service
+          # account unchanged.
+          gcloud run deploy "$SERVICE" \
+            --image="$IMAGE:${{ steps.build.outputs.tag }}" \
+            --region="$REGION" --no-traffic --tag=candidate --quiet
+
+      - name: Health-check the candidate before it serves anyone
+        run: |
+          URL=$(gcloud run services describe "$SERVICE" --region="$REGION" --format=json \
+                | jq -r '.status.traffic[] | select(.tag=="candidate") | .url')
+          echo "Candidate URL: $URL"
+          [ -n "$URL" ] || { echo "::error::no candidate URL"; exit 1; }
+
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$URL/travel-grant-form/" || true)
+            [ "$code" = "200" ] && break
+            echo "  cold start, retry $i"; sleep 6
+          done
+
+          fail=0
+          check() {
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$URL$1")
+            if echo "$2" | grep -qw "$code"; then echo "  ok   $1 -> $code"
+            else echo "::error::$1 returned $code, expected: $2"; fail=1; fi
+          }
+          # Applicant-facing pages must render; internal ones must still refuse
+          # an anonymous caller, so a deploy that accidentally opened the
+          # dashboard cannot sail through.
+          check "/travel-grant-form/" "200"
+          check "/"                   "200"
+          check "/api/login/"         "200"
+          check "/dashboard/"         "302 403"
+          check "/profile/"           "302 403"
+          exit $fail
+
+      - name: Promote candidate to 100% traffic
+        run: |
+          gcloud run services update-traffic "$SERVICE" --region="$REGION" --to-latest --quiet
+          gcloud run services update-traffic "$SERVICE" --region="$REGION" --remove-tags=candidate --quiet
+          echo "Promoted ${{ steps.build.outputs.tag }}"
+
+      - name: Hold back a failed candidate
+        if: failure() && steps.current.outputs.prev != ''
+        run: |
+          # The candidate never received traffic, so there is nothing to undo --
+          # just drop its tag and confirm the old revision is still serving.
+          gcloud run services update-traffic "$SERVICE" --region="$REGION" \
+            --to-revisions="${{ steps.current.outputs.prev }}=100" --quiet || true
+          gcloud run services update-traffic "$SERVICE" --region="$REGION" \
+            --remove-tags=candidate --quiet || true
+          echo "::warning::Deploy held back. ${{ steps.current.outputs.prev }} is still serving."
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Cloud Run deploy"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Image | \`${{ steps.build.outputs.tag }}\` |"
+            echo "| Previous revision | \`${{ steps.current.outputs.prev }}\` |"
+            echo "| Now serving | \`$(gcloud run services describe "$SERVICE" --region="$REGION" --format='value(status.traffic[0].revisionName)' 2>/dev/null)\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
