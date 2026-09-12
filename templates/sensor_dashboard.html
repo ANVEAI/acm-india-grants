@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sensor Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .sensor-card { border: 1px solid #ccc; padding: 20px; margin-bottom: 10px; border-radius: 8px; width: 250px; }
+        .value { font-size: 24px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>ESP32 Sensor Dashboard</h1>
+    
+    <div class="sensor-card">
+        <p>Temperature:</p>
+        <p class="value">{{ temperature }} °C</p>
+    </div>
+
+    <div class="sensor-card">
+        <p>Humidity:</p>
+        <p class="value">{{ humidity }} %</p>
+    </div>
+
+    <div class="sensor-card">
+        <p>Relay State:</p>
+        <p class="value">{{ relay_state }}</p>
+    </div>
+
+    <div class="sensor-card">
+        <p>Coolant State:</p>
+        <p class="value">{{ coolant_state }}</p>
+    </div>
+</body>
+</html>

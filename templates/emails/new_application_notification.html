@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px 8px 0 0;
+            margin: -30px -30px 20px -30px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .content {
+            margin: 20px 0;
+        }
+        .alert {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .application-details {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 4px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+        }
+        .application-details p {
+            margin: 10px 0;
+        }
+        .application-details strong {
+            color: #667eea;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 30px;
+            background-color: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .button:hover {
+            background-color: #764ba2;
+        }
+        .tracking-code {
+            font-size: 16px;
+            font-weight: bold;
+            color: #667eea;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎓 New Travel Grant Application Received</h1>
+        </div>
+        
+        <div class="content">
+            <p>Dear Chairman,</p>
+            
+            <p>A new travel grant application has been submitted and is awaiting your review.</p>
+            
+            <div class="application-details">
+                <p><strong>Applicant Name:</strong> {{ applicant_name }}</p>
+                <p><strong>Applicant Email:</strong> <a href="mailto:{{ applicant_email }}">{{ applicant_email }}</a></p>
+                <p><strong>Conference Name:</strong> {{ conference_name }}</p>
+                <p><strong>Requested Amount:</strong> {{ requested_amount }}</p>
+                <p><strong>Application ID:</strong> <span class="tracking-code">{{ application_id }}</span></p>
+                <p><strong>Tracking Code:</strong> <span class="tracking-code">{{ tracking_code }}</span></p>
+            </div>
+            
+            <div class="alert">
+                <strong>Action Required:</strong> Please review and approve/reject this application as soon as possible.
+            </div>
+            
+            <p>Click the button below to view and review the application:</p>
+            
+            <a href="{{ application_link }}" class="button">Review Application</a>
+            
+            <p>Application Details:</p>
+            <ul>
+                <li>Application ID: {{ application_id }}</li>
+                <li>Tracking Code: {{ tracking_code }}</li>
+                <li>Applicant: {{ applicant_name }}</li>
+                <li>Conference: {{ conference_name }}</li>
+                <li>Requested Amount: {{ requested_amount }}</li>
+            </ul>
+            
+            <p>Please review the application at your earliest convenience and take appropriate action.</p>
+            
+            <p>Thank you for your attention to this matter.</p>
+        </div>
+        
+        <div class="footer">
+            <p>This is an automated email from the Student Travel Grant Portal. Please do not reply directly to this email.</p>
+            <p>&copy; 2026 Student Travel Grant System. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

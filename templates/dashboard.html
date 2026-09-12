@@ -1,0 +1,308 @@
+{% extends "common/base_layout.html" %}
+{% load static %}
+
+{% block title %}Dashboard - ACM India Grants{% endblock %}
+
+{% block content %}
+
+<!-- ================= STYLES ================= -->
+<style>
+.dashboard-content { padding: 0; }
+
+.card {
+    border-radius: 0.75rem;
+    transition: all 0.3s ease;
+}
+.card:hover {
+    box-shadow: 0 8px 16px rgba(0,0,0,0.08);
+}
+
+/* ===== ATTRACTIVE TABLE UI ===== */
+.table {
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #fff;
+}
+
+.table thead th {
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 14px 16px !important;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #ffffff !important;
+    border-bottom: 0;
+}
+
+.table tbody td {
+    padding: 14px 16px !important;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.table tbody tr {
+    transition: all 0.25s ease;
+}
+.table tbody tr:hover {
+    background-color: #f4f6fb;
+}
+
+.table thead th:first-child {
+    border-top-left-radius: 0.6rem;
+}
+.table thead th:last-child {
+    border-top-right-radius: 0.6rem;
+}
+
+.badge {
+    font-size: 0.75rem;
+    padding: 0.45rem 0.75rem;
+}
+
+/* DataTables tweaks */
+.dataTables_wrapper .dataTables_filter input {
+    border-radius: 0.5rem;
+    padding: 6px 10px;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    color: #fff !important;
+}
+</style>
+
+<div class="dashboard-content">
+
+<!-- ================= INSIGHTS ================= -->
+<div class="row mb-4">
+    <div class="col">
+        <div class="card p-3 text-center h-100 mt-3 ms-3">
+            <h6>Total Applications</h6>
+            <h3>{{ insights.total|default:"0" }}</h3>
+        </div>
+    </div>
+
+    <div class="col">
+        <div class="card p-3 text-center h-100 mt-3 ms-3">
+            <h6>Submitted</h6>
+            <h3>{{ insights.submitted|default:"0" }}</h3>
+        </div>
+    </div>
+
+    <div class="col">
+        <div class="card p-3 text-center h-100 mt-3 ms-3">
+            <h6>Under Review</h6>
+            <h3>{{ insights.under_review|default:"0" }}</h3>
+        </div>
+    </div>
+
+    <div class="col">
+        <div class="card p-3 text-center h-100 mt-3 ms-3">
+            <h6>Accepted</h6>
+            <h3>{{ insights.approved|default:"0" }}</h3>
+        </div>
+    </div>
+
+    <div class="col">
+        <div class="card p-3 text-center h-100 border-danger mt-3 ms-3">
+            <h6 class="text-danger">Rejected</h6>
+            <h3 class="text-danger">{{ insights.rejected|default:"0" }}</h3>
+        </div>
+    </div>
+</div>
+
+
+
+<!-- ================= EXPORT ================= -->
+<div class="d-flex justify-content-end gap-2 me-3 ms-3">
+    <a href="{% url 'export_applications' %}?format=xlsx" class="btn btn-sm btn-success">
+        <i class="feather-download me-1"></i> Export Excel
+    </a>
+    <a href="{% url 'export_applications' %}?format=csv" class="btn btn-sm btn-outline-secondary">
+        <i class="feather-download me-1"></i> Export CSV
+    </a>
+</div>
+
+<!-- ================= TABS ================= -->
+<ul class="nav nav-tabs mb-3"style="margin-top:2%; padding-left: 2%;">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#submitted">Submitted</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#under-review">Under Review</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#accepted">Accepted</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#rejected">Rejected</button></li>
+</ul>
+
+<div class="tab-content" >
+
+<!-- ================= SUBMITTED ================= -->
+<div class="tab-pane fade show active" id="submitted" style="margin-top:2%; padding-left: 1%;">
+<div class="card">
+<div class="table-responsive">
+<table class="table table-hover" id="submittedTable">
+<thead>
+<tr>
+<th>Tracking</th>{% if show_program_column %}<th>Type</th>{% endif %}<th>Applicant</th><th>Paper</th><th>Conference</th><th>Status</th><th class="text-center">Actions</th>
+</tr>
+</thead>
+<tbody>
+{% for app in applications %}
+{% if app.status == "SUBMITTED" %}
+<tr>
+<td><span class="badge bg-secondary">{{ app.tracking_code }}</span></td>
+{% if show_program_column %}<td><span class="badge {% if app.program == "RFG" %}bg-dark{% else %}bg-primary{% endif %}">{{ app.program_label }}</span></td>{% endif %}
+<td>{{ app.applicant_name }}</td>
+<td>{{ app.paper_title|truncatewords:4 }}</td>
+<td>{{ app.conference_name }}</td>
+<td><span class="badge bg-secondary">Submitted</span></td>
+<td class="text-center">
+    <a href="{% url 'application_details' app.id %}" class="btn btn-sm btn-primary w-100">Details</a>
+    {% if app.program in decide_programs %}
+    <button class="btn btn-sm btn-danger w-100" onclick="rejectApplication('{{ app.id }}','{{ app.tracking_code }}')">Cancel</button>
+    {% endif %}
+</td>
+</tr>
+{% endif %}
+{% endfor %}
+</tbody>
+</table>
+</div>
+</div>
+</div>
+
+<!-- ================= UNDER REVIEW ================= -->
+<div class="tab-pane fade" id="under-review"style="margin-top:2%; padding-left: 1%;">
+<div class="card">
+<div class="table-responsive">
+<table class="table table-hover" id="underReviewTable">
+<thead>
+<tr>
+<th>Tracking</th>{% if show_program_column %}<th>Type</th>{% endif %}<th>Applicant</th><th>Paper</th><th>Conference</th><th>Status</th><th class="text-center">Actions</th>
+</tr>
+</thead>
+<tbody>
+{% for app in applications %}
+{% if app.status == "Under Review" %}
+<tr>
+<td><span class="badge bg-warning text-dark">{{ app.tracking_code }}</span></td>
+{% if show_program_column %}<td><span class="badge {% if app.program == "RFG" %}bg-dark{% else %}bg-primary{% endif %}">{{ app.program_label }}</span></td>{% endif %}
+<td>{{ app.applicant_name }}</td>
+<td>{{ app.paper_title|truncatewords:4 }}</td>
+<td>{{ app.conference_name }}</td>
+<td><span class="badge bg-warning text-dark">Under Review</span></td>
+<td class="text-center">
+    <a href="{% url 'application_details' app.id %}" class="btn btn-sm btn-primary w-100">Details</a>
+    {% if app.program in decide_programs %}
+    <button class="btn btn-sm btn-danger w-100" onclick="rejectApplication('{{ app.id }}','{{ app.tracking_code }}')">Cancel</button>
+    {% endif %}
+</td>
+</tr>
+{% endif %}
+{% endfor %}
+</tbody>
+</table>
+</div>
+</div>
+</div>
+
+<!-- ================= ACCEPTED ================= -->
+<div class="tab-pane fade" id="accepted"style="margin-top:2%; padding-left: 1%;">
+<div class="card">
+<div class="table-responsive">
+<table class="table table-hover" id="acceptedTable">
+<thead>
+<tr>
+<th>Tracking</th>{% if show_program_column %}<th>Type</th>{% endif %}<th>Applicant</th><th>Paper</th><th>Conference</th><th>Status</th><th class="text-center">Details</th>
+</tr>
+</thead>
+<tbody>
+{% for app in applications %}
+{% if app.status == "Accepted" %}
+<tr>
+<td><span class="badge bg-success">{{ app.tracking_code }}</span></td>
+{% if show_program_column %}<td><span class="badge {% if app.program == "RFG" %}bg-dark{% else %}bg-primary{% endif %}">{{ app.program_label }}</span></td>{% endif %}
+<td>{{ app.applicant_name }}</td>
+<td>{{ app.paper_title|truncatewords:4 }}</td>
+<td>{{ app.conference_name }}</td>
+<td><span class="badge bg-success">Accepted</span></td>
+<td class="text-center">
+<a href="{% url 'application_details' app.id %}" class="btn btn-sm btn-primary">Details</a>
+</td>
+</tr>
+{% endif %}
+{% endfor %}
+</tbody>
+</table>
+</div>
+</div>
+</div>
+
+<!-- ================= REJECTED ================= -->
+<div class="tab-pane fade" id="rejected"style="margin-top:2%; padding-left: 1%;">
+<div class="card">
+<div class="table-responsive">
+<table class="table table-hover" id="rejectedTable">
+<thead>
+<tr>
+<th>Tracking</th>{% if show_program_column %}<th>Type</th>{% endif %}<th>Applicant</th><th>Paper</th><th>Conference</th><th>Reason</th><th class="text-center">Details</th>
+</tr>
+</thead>
+<tbody>
+{% for app in applications %}
+{% if app.status == "Rejected" %}
+<tr>
+<td><span class="badge bg-danger">{{ app.tracking_code }}</span></td>
+{% if show_program_column %}<td><span class="badge {% if app.program == "RFG" %}bg-dark{% else %}bg-primary{% endif %}">{{ app.program_label }}</span></td>{% endif %}
+<td>{{ app.applicant_name }}</td>
+<td>{{ app.paper_title|truncatewords:4 }}</td>
+<td>{{ app.conference_name }}</td>
+<td>{{ app.rejection_reason|default:"-" }}</td>
+<td class="text-center">
+<a href="{% url 'application_details' app.id %}" class="btn btn-sm btn-primary">Details</a>
+</td>
+</tr>
+{% endif %}
+{% endfor %}
+</tbody>
+</table>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- ================= DATATABLES ================= -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+
+<script>
+$(document).ready(function () {
+    $('#submittedTable, #underReviewTable, #acceptedTable, #rejectedTable').DataTable({
+        pageLength: 5,
+        lengthChange: false,
+        order: []
+    });
+
+    $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
+        $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+    });
+});
+
+function rejectApplication(appId, trackingCode) {
+    let reason = prompt(`Enter rejection reason for application #${trackingCode}:`);
+    if (reason && reason.trim()) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/applications/${appId}/reject/`;
+        form.innerHTML = `
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+            <input type="hidden" name="reason" value="${reason}">
+        `;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+
+{% endblock %}

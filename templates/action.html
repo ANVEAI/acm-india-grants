@@ -1,0 +1,109 @@
+{% extends "common/base_layout.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-xxl py-5">
+  <div class="container">
+    <h2 class="text-center mb-4" style="color:#16233b;">Device Control Dashboard</h2>
+
+    {% if error %}
+      <div class="alert alert-danger text-center">{{ error }}</div>
+    {% endif %}
+
+    <div class="row g-4 justify-content-center">
+      {% for d in devices %}
+      <div class="col-md-3 col-sm-6">
+        <div class="card text-white shadow-lg" style="background:#16233b; border-radius:15px; text-align:center;">
+          <div class="card-body">
+            <h5 class="card-title mb-2"style="color:#ffffff;">{{ d.device_name }}</h5>
+            <p>ID: <strong>{{ d.device_id }}</strong></p>
+            <p>Status: 
+              <span class="badge {% if d.is_online %}bg-success{% else %}bg-danger{% endif %}" id="status-{{ d.device_id }}">
+                {% if d.is_online %}Online{% else %}Offline{% endif %}
+              </span>
+            </p>
+
+          <p>Water Pump:
+  <select id="relay-{{ d.device_id }}" class="form-select form-select-sm">
+   {% if d.relay_state == "ON" %}
+    <option value="ON" selected>ON</option>
+    <option value="OFF">OFF</option>
+{% else %}
+    <option value="ON">ON</option>
+    <option value="OFF" selected>OFF</option>
+{% endif %}
+
+  </select>
+</p>
+
+<p>Coolant:
+  <select id="coolant-{{ d.device_id }}" class="form-select form-select-sm">
+   {% if d.coolant_state == "ON" %}
+    <option value="ON" selected>ON</option>
+    <option value="OFF">OFF</option>
+{% else %}
+    <option value="ON">ON</option>
+    <option value="OFF" selected>OFF</option>
+{% endif %}
+
+  </select>
+</p>
+
+
+            <button class="btn btn-light btn-sm" onclick="updateDevice('{{ d.device_id }}')">Update Status</button>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    document.cookie.split(';').forEach(cookie => {
+      cookie = cookie.trim();
+      if (cookie.startsWith(name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+      }
+    });
+  }
+  return cookieValue;
+}
+
+async function updateDevice(deviceId) {
+  const relayState = document.getElementById(`relay-${deviceId}`).value;
+  const coolantState = document.getElementById(`coolant-${deviceId}`).value;
+  const badge = document.getElementById(`status-${deviceId}`);
+
+  try {
+    const res = await fetch("/toggle-device/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken")
+      },
+      body: JSON.stringify({
+        device_id: deviceId,
+        relay_state: relayState,
+        coolant_state: coolantState
+      })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      badge.innerText = data.is_online ? "Online" : "Offline";
+      badge.className = data.is_online ? "badge bg-success" : "badge bg-danger";
+      alert(`Device ${deviceId} updated successfully!`);
+    } else {
+      alert(`Error: ${data.error}`);
+    }
+  } catch (err) {
+    console.error("Update failed:", err);
+    alert("Failed to send update command.");
+  }
+}
+</script>
+{% endblock %}

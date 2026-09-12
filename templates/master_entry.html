@@ -1,0 +1,148 @@
+{% extends "common/base_layout.html" %}
+{% load static %}
+
+{% block content %}
+<!-- SweetAlert2 CDN -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<div style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); 
+            color: #fff; 
+            font-family:'Poppins', sans-serif; 
+            min-height: 80vh; 
+            padding: 60px 0;">
+  <div class="container" style="font-family:'Poppins',sans-serif; color:#fff; min-height:100vh;">
+    <div class="container" style="max-width:600px; background:#16233b; border-radius:15px; padding:30px; box-shadow:0 0 15px rgba(0,224,255,0.3);">
+
+      <h2 class="text-center" style="color:#00e0ff; font-weight:700;">Add New Device</h2>
+      <p class="text-center" style="color:#ccc;">Fill in the details below to register a new IoT device.</p>
+
+      <form method="POST" action="{% url 'add_device' %}" style="margin-top:20px;" id="deviceForm">
+        {% csrf_token %}
+
+        <!-- Device Name -->
+        <div class="mb-3">
+          <label class="form-label">Device Name</label>
+          <input type="text" name="device_name" class="form-control" placeholder="Enter Device Name (e.g., Agri Device 01)" 
+                 style="background:rgba(255,255,255,0.1); color:#fff; border:none;" required>
+        </div>
+
+        <!-- Device Type -->
+        <div class="mb-3">
+          <label class="form-label">Device Type</label>
+          <select name="device_type" class="form-control" 
+                  style="background:rgba(255,255,255,0.1); color:#fff; border:none;" required>
+            <option value="" disabled selected>Select Device Type</option>
+            <option value="ESP32">ESP32</option>
+            <option value="ESP8266">ESP8266</option>
+            <option value="Arduino">Arduino</option>
+            <option value="Raspberry Pi">Raspberry Pi</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+
+        <!-- MAC Address -->
+        <div class="mb-3">
+          <label class="form-label">MAC Address</label>
+          <input type="text" name="mac_address" class="form-control" placeholder="Enter MAC Address (e.g., CC7B5C1E4C08)" 
+                 style="background:rgba(255,255,255,0.1); color:#fff; border:none;" required>
+          <small class="text-muted" style="color:#aaa !important;">Format: CC7B5C1E4C08 or CC:7B:5C:1E:4C:08</small>
+        </div>
+
+        <!-- City -->
+        <div class="mb-3">
+          <label class="form-label">City</label>
+          <input type="text" name="city" class="form-control" placeholder="Enter City (e.g., New York)" 
+                 style="background:rgba(255,255,255,0.1); color:#fff; border:none;" required>
+        </div>
+
+        <!-- Coordinates -->
+        <div class="mb-3">
+          <label class="form-label">Coordinates</label>
+          <input type="text" name="coordinates" class="form-control" placeholder="Latitude, Longitude (e.g., 26.504204, 80.235100)" 
+                 style="background:rgba(255,255,255,0.1); color:#fff; border:none;">
+          <small class="text-muted" style="color:#aaa !important;">Format: latitude, longitude</small>
+        </div>
+
+        <!-- Select User -->
+        <div class="mb-3">
+          <label class="form-label">Select User</label>
+          <select name="user_id" class="form-control"
+                  style="background:rgba(255,255,255,0.1); color:#fff; border:none;" required>
+              <option value="" disabled selected>Select User</option>
+              {% for user in users %}
+                  <option value="{{ user.ID }}" style="color:black;">
+                      {{ user.NAME }}
+                  </option>
+              {% endfor %}
+          </select>
+          <small class="text-muted" style="color:#aaa !important;">
+              Choose a user for device registration
+          </small>
+        </div>
+
+        <!-- Relay State -->
+        <div class="mb-3">
+          <label class="form-label">Initial Relay State</label>
+          <select name="relay_state" class="form-control" 
+                  style="background:rgba(255,255,255,0.1); color:#fff; border:none;">
+            <option value="OFF" selected>OFF</option>
+            <option value="ON">ON</option>
+          </select>
+        </div>
+
+        <!-- Coolant State -->
+        <div class="mb-3">
+          <label class="form-label">Initial Coolant State</label>
+          <select name="coolant_state" class="form-control" 
+                  style="background:rgba(255,255,255,0.1); color:#fff; border:none;">
+            <option value="OFF" selected>OFF</option>
+            <option value="ON">ON</option>
+          </select>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="text-center">
+          <button type="submit" class="btn btn-primary" 
+                  style="background:#00e0ff; border:none; font-weight:600; width:100%; padding:12px;">
+            Register Device
+          </button>
+        </div>
+      </form>
+
+      <!-- Device Registration Instructions -->
+      <div class="mt-4 p-3" style="background: rgba(0, 224, 255, 0.1); border-radius: 10px; border-left: 4px solid #00e0ff;">
+        <h6 style="color: #00e0ff; font-weight: 600;">Device Registration Instructions:</h6>
+        <ul style="color: #ccc; font-size: 0.9rem; margin-bottom: 0;">
+          <li>Device ID will be automatically generated (6 digits, unique)</li>
+          <li>MAC Address can be with or without colons</li>
+          <li>Device will be set to offline initially</li>
+          <li>ESP32 will automatically detect and sync with this registration</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- SweetAlert2 Script for Success/Error Messages -->
+<script>
+  {% if message %}
+    Swal.fire({
+      icon: 'success',
+      title: 'Success!',
+      text: '{{ message|escapejs }}',
+      confirmButtonColor: '#00e0ff'
+    });
+  {% endif %}
+
+  {% if error %}
+    Swal.fire({
+      icon: 'error',
+      title: 'Oops!',
+      text: '{{ error|escapejs }}',
+      confirmButtonColor: '#ff4444'
+    });
+  {% endif %}
+</script>
+
+{% endblock %}

@@ -1,0 +1,698 @@
+{% extends "common/base_layout.html" %}
+{% load static %}
+
+{% block title %}Application Details - {{ program_label|default:"ACM India Grants" }}{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <!-- Tracking Code -->
+<!-- Tracking Code + Status -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap">
+
+        <!-- Tracking Code -->
+        <div>
+            <span class="text-muted small fw-bold">Tracking Code:</span>
+            <span class="badge bg-info fs-6">
+                {{ application.tracking_code|default:"N/A" }}
+            </span>
+        </div>
+
+        <!-- Programme -->
+        <div>
+            <span class="text-muted small fw-bold me-2">Type:</span>
+            <span class="badge fs-6 px-3 py-2 {% if program == 'RFG' %}bg-dark{% else %}bg-primary{% endif %}">
+                {{ program_label|default:"Travel Support" }}
+            </span>
+            {% if rfg_detail.scheme_label %}
+            <span class="badge fs-6 px-3 py-2 bg-secondary">{{ rfg_detail.scheme_label }}</span>
+            {% endif %}
+        </div>
+
+        <!-- Status -->
+        <div>
+            <span class="text-muted small fw-bold me-2">Status:</span>
+            <span class="badge fs-6 px-3 py-2
+                {% if application.status == 'SUBMITTED' %}bg-secondary
+                {% elif application.status == 'Under Review' %}bg-warning text-dark
+                {% elif application.status == 'Accepted' %}bg-success
+                {% elif application.status == 'Rejected' %}bg-danger
+                {% else %}bg-info{% endif %}">
+                {{ application.status }}
+            </span>
+        </div>
+
+    </div>
+</div>
+
+{% if is_observer %}
+<div class="alert alert-info d-flex align-items-center gap-2 mb-4" role="alert">
+    <i class="feather-eye"></i>
+    <div>
+        You have <strong>observer</strong> access to {{ program_label }} applications.
+        You can see everything here, but cannot review, decide or notify.
+    </div>
+</div>
+{% endif %}
+
+<!-- Rejection reason: previously only visible on the dashboard -->
+{% if application.status == "Rejected" and application.rejection_reason %}
+<div class="alert alert-danger d-flex align-items-start gap-2 mb-4" role="alert">
+    <i class="feather-x-circle mt-1"></i>
+    <div>
+        <strong class="d-block mb-1">Rejection Reason</strong>
+        {{ application.rejection_reason }}
+    </div>
+</div>
+{% endif %}
+
+<!-- Notification state. The decision is held as a draft until the Chairman
+     explicitly sends it, so make the current state unambiguous. -->
+{% if user_role and application.status != "SUBMITTED" %}
+    {% if application.notified_status == application.status %}
+    <div class="alert alert-secondary d-flex align-items-center gap-2 mb-4" role="alert">
+        <i class="feather-check-circle"></i>
+        <div>
+            Applicant was notified of this decision
+            ({{ application.notified_status }}) on {{ application.notified_at }}.
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4"
+         role="alert">
+        <div class="d-flex align-items-center gap-2">
+            <i class="feather-alert-triangle"></i>
+            <div>
+                <strong>Not sent to the applicant yet.</strong>
+                This decision ({{ application.status }}) is a draft until it is sent.
+                {% if not can_notify %}
+                    {% if application.status == "Under Review" %}
+                    <span class="d-block small">Only the Chairman or a Reviewer can send this notification.</span>
+                    {% else %}
+                    <span class="d-block small">Only the Chairman can send this one.</span>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+        {% if can_notify %}
+        <form method="POST" action="{% url 'notify_applicant' application.id %}" class="m-0">
+            {% csrf_token %}
+            <button class="btn btn-primary btn-sm fw-bold">
+                <i class="feather-bell me-1"></i>Notify Applicant
+            </button>
+        </form>
+        {% endif %}
+    </div>
+    {% endif %}
+{% endif %}
+
+            <!-- Applicant Information -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header py-3"
+                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff;">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="feather-user me-2" style="color: #ffffff;"></i>Applicant Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Name</label>
+                            <p class="fw-500 text-dark">{{ application.applicant_name }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Email</label>
+                            <p class="fw-500 text-dark"><a href="mailto:{{ application.email }}">{{ application.email }}</a></p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Institution</label>
+                            <p class="fw-500 text-dark">{{ application.institution_name }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Mobile Phone</label>
+                            <p class="fw-500 text-dark">{{ application.mobile_phone }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Postal Address</label>
+                            <p class="fw-500 text-dark">{{ application.postal_address }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Supervisor Name</label>
+                            <p class="fw-500 text-dark">{{ application.supervisor_name }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if program != 'RFG' %}
+            <!-- Education Details -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header py-3"
+                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff;">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="feather-book me-2" style="color: #ffffff;"></i>Education Details
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Degree Type</label>
+                            <p class="fw-500 text-dark">{{ application.current_degree_type }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Degree Program</label>
+                            <p class="fw-500 text-dark">{{ application.current_degree_program }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Enrolment Type</label>
+                            <p class="fw-500 text-dark">{{ application.enrolment_type|default:"—" }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Supervisor Details -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header py-3"
+                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff;">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="feather-users me-2" style="color: #ffffff;"></i>Supervisor's Contact Details
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Name</label>
+                            <p class="fw-500 text-dark">{{ application.supervisor_name|default:"—" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Email</label>
+                            <p class="fw-500 text-dark">
+                                {% if application.faculty_email %}
+                                <a href="mailto:{{ application.faculty_email }}">{{ application.faculty_email }}</a>
+                                {% else %}—{% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Phone</label>
+                            <p class="fw-500 text-dark">{{ application.faculty_phone|default:"—" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Designation</label>
+                            <p class="fw-500 text-dark">{{ application.faculty_designation|default:"—" }}</p>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Address</label>
+                            <p class="fw-500 text-dark">{{ application.faculty_address|default:"—" }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% endif %}{# /Travel-only panels #}
+
+            {% if program == 'RFG' %}
+            <!-- RFG Details -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header py-3"
+                     style="background: linear-gradient(135deg, #111827 0%, #374151 100%); color: #ffffff;">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="feather-award me-2" style="color: #ffffff;"></i>Research Facilitation Grant
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Scheme</label>
+                            <p class="fw-500 text-dark">{{ rfg_detail.scheme_label|default:"-" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Affiliation Status</label>
+                            <p class="fw-500 text-dark">{{ rfg_detail.affiliation_status|default:"-" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Department(s)</label>
+                            <p class="fw-500 text-dark">{{ rfg_detail.departments|default:"-" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Student Type</label>
+                            <p class="fw-500 text-dark">{{ rfg_detail.student_type|default:"-" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Correspondence Email</label>
+                            <p class="fw-500 text-dark">{{ rfg_detail.correspondence_email|default:"-" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Faculty Contact</label>
+                            <p class="fw-500 text-dark">
+                                {{ rfg_detail.faculty_contact_name|default:"-" }}
+                                {% if rfg_detail.faculty_contact_email %}
+                                &middot; {{ rfg_detail.faculty_contact_email }}
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-12 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Availed RFG Before?</label>
+                            <p class="fw-500 text-dark">
+                                {% if rfg_detail.previous_rfg %}
+                                <span class="badge bg-warning text-dark">Yes</span>
+                                {{ rfg_detail.previous_rfg_details }}
+                                {% else %}<span class="badge bg-secondary">No</span>{% endif %}
+                            </p>
+                        </div>
+
+                        {% if rfg_detail.scheme == 'INVITATION' %}
+                        <div class="col-12"><hr></div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Primary Organizer</label>
+                            <p class="fw-500 text-dark">
+                                {{ rfg_detail.organizer_name|default:"-" }}
+                                {% if rfg_detail.organizer_affiliation %}({{ rfg_detail.organizer_affiliation }}){% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Organizer Email</label>
+                            <p class="fw-500 text-dark">{{ rfg_detail.organizer_email|default:"-" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Grant Heads</label>
+                            <p class="fw-500 text-dark">{{ rfg_detail.grant_heads|default:"-" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Event Website</label>
+                            <p class="fw-500 text-dark text-break">{{ rfg_detail.event_url|default:"-" }}</p>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Amount Breakup</label>
+                            <p class="fw-500 text-dark">{{ rfg_detail.amount_breakdown|default:"-" }}</p>
+                        </div>
+                        {% else %}
+                        <div class="col-12"><hr></div>
+                        <div class="col-12 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Authors</label>
+                            <p class="fw-500 text-dark">{{ rfg_detail.paper_authors|default:"-" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Publication Venue URL</label>
+                            <p class="fw-500 text-dark text-break">{{ rfg_detail.publication_venue_url|default:"-" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Accepted Paper URL</label>
+                            <p class="fw-500 text-dark text-break">{{ rfg_detail.paper_pdf_url|default:"-" }}</p>
+                        </div>
+                        {% endif %}
+
+                        <div class="col-12">
+                            <div class="d-flex gap-2 flex-wrap">
+                                {% if rfg_detail.charges_doc_path %}
+                                <a href="/media/{{ rfg_detail.charges_doc_path }}" target="_blank" class="btn btn-dark">
+                                    <i class="feather-download me-2"></i>Charges Document
+                                </a>
+                                {% endif %}
+                                {% if rfg_detail.invitation_letter_path %}
+                                <a href="/media/{{ rfg_detail.invitation_letter_path }}" target="_blank" class="btn btn-dark">
+                                    <i class="feather-download me-2"></i>Invitation Letter
+                                </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Conference Details -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header py-3"
+                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff;">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="feather-briefcase me-2" style="color: #ffffff;"></i>Conference Details
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Conference Name</label>
+                            <p class="fw-500 text-dark">{{ application.conference_name }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Venue</label>
+                            <p class="fw-500 text-dark">{{ application.conference_venue }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Start Date</label>
+                            <p class="fw-500 text-dark">{{ application.conference_start_date }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">End Date</label>
+                            <p class="fw-500 text-dark">{{ application.conference_end_date }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Website</label>
+                            <p class="fw-500 text-dark text-break">
+                                {% if application.conference_website %}
+                                <a href="{{ application.conference_website }}" target="_blank" rel="noopener noreferrer">
+                                    {{ application.conference_website }}
+                                </a>
+                                {% else %}—{% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Paper Submission Deadline (Final)</label>
+                            <p class="fw-500 text-dark">{{ application.paper_submission_deadline|default:"—" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Acceptance Notification Received</label>
+                            <p class="fw-500 text-dark">{{ application.acceptance_notification_date|default:"—" }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Paper Details -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header py-3"
+                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff;">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="feather-file-text me-2" style="color: #ffffff;"></i>Paper Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Paper Title</label>
+                            <p class="fw-500 text-dark">{{ application.paper_title }}</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Type of Paper</label>
+                            <p class="fw-500 text-dark">{{ application.paper_type|default:"—" }}</p>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Paper Details / Abstract</label>
+                            <p class="fw-500 text-dark" style="line-height: 1.6;">{{ application.paper_details }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Budget Information -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header py-3"
+                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff;">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="feather-dollar-sign me-2" style="color: #ffffff;"></i>Budget Details
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Travel Budget</label>
+                            <p class="fw-500 text-dark fs-5">₹{{ application.travel_budget }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Registration Fee</label>
+                            <p class="fw-500 text-dark fs-5">₹{{ application.registration_fee }}</p>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Budget Justification</label>
+                            <p class="fw-500 text-dark" style="line-height: 1.6;">{{ application.budget_justification }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Travel Budget</label>
+                            <p class="fw-500 text-dark fs-5">
+                                ₹{{ approved_amount|default:application.travel_budget }}
+                                {% if approved_amount %}
+                                    <span class="text-success small">(Approved)</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Availed an IARCS-ACMI Grant Before?</label>
+                            <p class="fw-500 text-dark">
+                                {% if application.previous_grant %}
+                                <span class="badge bg-warning text-dark">Yes</span>
+                                {% else %}
+                                <span class="badge bg-secondary">No</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                        {% if application.previous_grant %}
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Previous Conference</label>
+                            <p class="fw-500 text-dark">{{ application.previous_conference_name|default:"—" }}</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Previous Conference Dates</label>
+                            <p class="fw-500 text-dark">{{ application.previous_conference_dates|default:"—" }}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Documents -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header py-3"
+                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff;">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="feather-paperclip me-2" style="color: #ffffff;"></i>Documents
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex gap-2 flex-wrap">
+                        {% if application.paper_file_path %}
+                        <a href="/media/{{ application.paper_file_path }}" target="_blank" class="btn btn-primary">
+                            <i class="feather-download me-2"></i>Download Paper
+                        </a>
+                        {% else %}
+                        <span class="text-muted">No paper file uploaded</span>
+                        {% endif %}
+                        {% if application.acceptance_letter_path %}
+                        <a href="/media/{{ application.acceptance_letter_path }}" target="_blank" class="btn btn-success">
+                            <i class="feather-download me-2"></i>Download Acceptance Letter
+                        </a>
+                        {% else %}
+                        <span class="text-muted">No acceptance letter uploaded</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+
+
+            <!-- ================= REVIEWS + REVIEW FORM ================= -->
+            <div class="row g-4 mb-4">
+
+                <!-- LEFT: REVIEWS LIST -->
+                <div class="col-md-6">
+                    <div class="card shadow-sm border-0 h-100">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0 fw-bold">
+                                <i class="feather-star me-2"></i>Reviews
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            {% if reviews %}
+                                {% for r in reviews %}
+                                    <div class="border-bottom pb-3 mb-3">
+                                        <div class="d-flex justify-content-between">
+                                            <strong>{{ r.reviewer_name }}</strong>
+                                            <span class="badge bg-warning text-dark">
+                                                {{ r.rating }}/10
+                                            </span>
+                                        </div>
+                                        <p class="text-muted mt-2 mb-1">{{ r.feedback }}</p>
+                                        <small class="text-muted">{{ r.created_at }}</small>
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <p class="text-muted">No reviews yet.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                {% if application.status != "Rejected" %}
+                    <!-- RIGHT: FINAL APPROVAL DETAILS -->
+                    {% if final_approval %}
+                    <div class="col-md-6">
+                        <div class="card shadow-sm border-0 h-100 border-success">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0 fw-bold">
+                                    <i class="feather-check-circle me-2"></i>Final Approval
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>ChairPerson:</strong> {{ final_approval.chairman_name }}</p>
+                                <p><strong>Approved Amount:</strong> ₹{{ final_approval.amount }}</p>
+                                <p><strong>Feedback:</strong> {{ final_approval.feedback|default:"No remarks" }}</p>
+                                <p>
+                                    <small class="text-muted">
+                                        Approved on {{ final_approval.created_at }}
+                                    </small>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <!-- Notify Applicant now lives in the notification-state banner
+                         at the top of the page, which covers Under Review, Accepted
+                         and Rejected rather than Accepted alone. -->
+
+                    <!-- RIGHT: REVIEW FORM (ONLY IF NOT ACCEPTED) -->
+                    {% if application.status != "Accepted" %}
+                        {% if can_review and not user_review %}
+                        <div class="col-md-6">
+                            <div class="card shadow-sm border-0 h-100">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0 fw-bold">
+                                        <i class="feather-edit me-2"></i>
+                                        {% if can_decide %}Chairman Review{% else %}Submit Review{% endif %}
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <form method="POST" action="{% url 'submit_review' application.id %}">
+                                        {% csrf_token %}
+                                        <div class="mb-3">
+                                            <label class="fw-bold">Rating</label>
+                                            <select name="rating" class="form-select" required>
+                                                <option value="" disabled selected>Select rating</option>
+                                                {% for i in "123456789"|make_list %}
+                                                    <option value="{{ forloop.counter }}">{{ forloop.counter }}</option>
+                                                {% endfor %}
+                                                <option value="10">10</option>
+                                            </select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="fw-bold">Feedback</label>
+                                            <textarea name="feedback" rows="4" class="form-control" required></textarea>
+                                        </div>
+                                        <button class="btn btn-primary w-100 fw-bold">
+                                            Submit Review
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% endif %}
+                {% endif %}
+            </div>
+
+            <!-- ================= FINAL APPROVAL ================= -->
+            {% if can_decide %}
+                {% if application.status != "Accepted" and application.status != "Rejected" %}
+                    {% if user_review and reviews %}
+                    <div class="card shadow-sm border-0 mb-4 border-success">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0 fw-bold">
+                                <i class="feather-check-circle me-2"></i>Final Approval
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="POST" action="{% url 'submit_final_approval' application.id %}">
+                                {% csrf_token %}
+
+                                <div class="mb-3">
+                                    <label class="fw-bold">Approved Amount</label>
+                                    {% if program == 'RFG' %}
+                                    <input type="number" name="amount" class="form-control"
+                                           min="1" max="{{ rfg_cap }}" step="1" required
+                                           placeholder="Up to ₹{{ rfg_cap }}">
+                                    <small class="text-muted">
+                                        Requested ₹{{ application.travel_budget }}.
+                                        RFG approvals cannot exceed ₹{{ rfg_cap }}.
+                                    </small>
+                                    {% else %}
+                                    <select name="amount" class="form-select" required>
+                                        <option value="" disabled selected>Select amount</option>
+                                        <option value="60000">₹60,000</option>
+                                        <option value="100000">₹1,00,000</option>
+                                    </select>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="fw-bold">Final Remarks</label>
+                                    <textarea name="feedback" rows="3" class="form-control"></textarea>
+                                </div>
+
+                                <button class="btn btn-success w-100 fw-bold fs-5">
+                                    FINAL APPROVAL
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning fw-bold text-center">
+                        ChairPerson must submit a review before final approval.
+                    </div>
+                    {% endif %}
+                {% endif %}
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+
+<style>
+    .card {
+        border-radius: 0.75rem;
+        transition: all 0.3s ease;
+    }
+
+    .card:hover {
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12) !important;
+    }
+
+    .card-header {
+        border-radius: 0.75rem 0.75rem 0 0;
+    }
+
+    .text-dark {
+        color: #2c3e50 !important;
+    }
+
+    label {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+
+    .fw-500 {
+        font-weight: 500;
+    }
+
+    a {
+        text-decoration: none;
+    }
+
+    .btn {
+        border-radius: 0.5rem;
+        font-weight: 500;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+    }
+
+    .btn-primary:hover {
+        background: linear-gradient(135deg, #5568d3 0%, #663a90 100%);
+    }
+
+    .btn-success {
+        background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        border: none;
+        color: #fff;
+    }
+
+    .btn-success:hover {
+        background: linear-gradient(135deg, #36d06d 0%, #30c4c0 100%);
+    }
+</style>
+
+{% endblock %}

@@ -1,0 +1,312 @@
+{% extends "common/base_layout.html" %}
+{% load static %}
+
+{% block title %}My Profile{% endblock %}
+
+{% block content %}
+<div class="main-content">
+<div class="container-fluid">
+<div class="row mb-4">
+<div class="col-md-10 mx-auto">
+
+<h2 class="fw-bold mb-4">My Profile</h2>
+
+<!-- ================= PROFILE MESSAGES ================= -->
+{% if profile_message %}
+<div class="alert alert-info">{{ profile_message }}</div>
+{% endif %}
+
+{% if password_message %}
+<div class="alert alert-warning">{{ password_message }}</div>
+{% endif %}
+
+{% if update_user_message %}
+<div class="alert alert-success">{{ update_user_message }}</div>
+{% endif %}
+
+{% if add_user_message %}
+<div class="alert alert-info">{{ add_user_message }}</div>
+{% endif %}
+
+<!-- ================= PROFILE ================= -->
+<div class="card shadow-sm border-0 mb-4">
+<div class="card-body p-4">
+<form method="POST" enctype="multipart/form-data">
+{% csrf_token %}
+<input type="hidden" name="update_profile" value="1">
+
+<div class="row mb-4">
+<div class="col-md-3 text-center">
+<img id="previewImage"
+     src="{% if profile_image_url %}{{ profile_image_url }}{% else %}{% static 'images/avatar/avatar-2.jpg' %}{% endif %}"
+     class="img-fluid rounded-circle mb-3"
+     style="width:150px;height:150px;object-fit:cover;">
+<label class="btn btn-sm btn-light">
+Change Photo
+<input type="file" name="profile_image" hidden accept="image/*"
+       onchange="previewProfileImage(event)">
+</label>
+</div>
+
+<div class="col-md-9">
+<div class="row mb-3">
+<div class="col-md-6">
+<label class="fw-bold">Email</label>
+<input type="email" class="form-control" value="{{ user.email }}" disabled>
+</div>
+<div class="col-md-6">
+<label class="fw-bold">Phone Number</label>
+<input type="text" class="form-control" name="phone_number"
+       value="{{ profile_user.mobile_no|default:'' }}" maxlength="10" placeholder="10 digit mobile number">
+</div>
+</div>
+
+<div class="row mb-3">
+<div class="col-md-12">
+<label class="fw-bold">Name</label>
+<input type="text" class="form-control" name="name"
+       value="{{ profile_user.name|default:'' }}">
+</div>
+</div>
+</div>
+</div>
+
+<div class="text-end">
+<button class="btn btn-primary btn-lg">Save Profile</button>
+</div>
+</form>
+</div>
+</div>
+
+<!-- ================= CHANGE PASSWORD ================= -->
+<div class="card shadow-sm border-0 mb-4">
+<div class="card-header fw-bold">Change Password</div>
+<div class="card-body p-4">
+<form method="POST">
+{% csrf_token %}
+<input type="hidden" name="change_password" value="1">
+
+<div class="mb-3">
+<label class="fw-bold">Old Password</label>
+<input type="password" class="form-control" name="old_password">
+</div>
+
+<div class="mb-3">
+<label class="fw-bold">New Password</label>
+<input type="password" class="form-control" name="new_password">
+</div>
+
+<div class="mb-3">
+<label class="fw-bold">Confirm New Password</label>
+<input type="password" class="form-control" name="confirm_password">
+</div>
+
+<div class="text-end">
+<button class="btn btn-warning btn-lg">Change Password</button>
+</div>
+</form>
+</div>
+</div>
+
+<!-- ================= ADD USER (System Reviewer only) ================= -->
+{% if user_role == "System Reviewer" %}
+<div class="card shadow-sm border-0 mb-4">
+<div class="card-header fw-bold">Add New User</div>
+<div class="card-body p-4">
+
+<form method="POST" enctype="multipart/form-data">
+{% csrf_token %}
+<input type="hidden" name="add_user" value="1">
+
+<div class="row mb-3">
+<div class="col-md-6">
+<label class="fw-bold">Name *</label>
+<input type="text" class="form-control" name="new_name" required>
+</div>
+<div class="col-md-6">
+<label class="fw-bold">Username *</label>
+<input type="text" class="form-control" name="new_username" required>
+</div>
+</div>
+
+<div class="row mb-3">
+<div class="col-md-6">
+<label class="fw-bold">Email *</label>
+<input type="email" class="form-control" name="new_email" required>
+</div>
+<div class="col-md-6">
+<label class="fw-bold">Phone Number</label>
+<input type="text" class="form-control" name="new_mobile" maxlength="10" placeholder="10 digit mobile number">
+</div>
+</div>
+
+<div class="row mb-3">
+<div class="col-md-6">
+<label class="fw-bold">Account Type *</label>
+<select class="form-select" name="new_role" required>
+    <option value="">Select</option>
+    <option value="Reviewer">Standard account</option>
+    <option value="System Reviewer">System Reviewer (manages users)</option>
+</select>
+<small class="text-muted">
+    Only System Reviewer can manage users. It can view every application but
+    cannot review, decide or notify.
+</small>
+</div>
+<div class="col-md-6">
+<label class="fw-bold">Photo</label>
+<input type="file" class="form-control" name="new_photo" accept="image/*">
+</div>
+</div>
+
+<div class="row mb-3">
+<div class="col-md-6">
+<label class="fw-bold">Travel Support access</label>
+<select class="form-select" name="new_travel_role">
+    <option value="">No access</option>
+    {% for choice in program_role_choices %}
+    <option value="{{ choice }}">{{ choice }}</option>
+    {% endfor %}
+</select>
+</div>
+<div class="col-md-6">
+<label class="fw-bold">Research Facilitation Grant access</label>
+<select class="form-select" name="new_rfg_role">
+    <option value="">No access</option>
+    {% for choice in program_role_choices %}
+    <option value="{{ choice }}">{{ choice }}</option>
+    {% endfor %}
+</select>
+</div>
+<div class="col-12">
+<small class="text-muted">
+    Set independently &mdash; a person can hold a different role in each programme,
+    or none. Reviewer rates and comments; Chairman approves, rejects and notifies;
+    Observer views only.
+</small>
+</div>
+</div>
+
+<div class="mb-3">
+<label class="fw-bold">Password *</label>
+<input type="password" class="form-control" name="new_password" required>
+</div>
+
+<div class="text-end">
+<button class="btn btn-success btn-lg">Add User</button>
+</div>
+</form>
+</div>
+</div>
+
+<!-- ================= ALL USERS TABLE ================= -->
+<div class="card shadow-sm border-0 mb-4">
+<div class="card-header fw-bold">All Users</div>
+<div class="card-body p-4">
+<p class="text-muted small mb-3">
+    <strong>Travel</strong> and <strong>RFG</strong> are set independently and take effect
+    immediately &mdash; the user does not need to log in again.
+    <strong>Reviewer</strong> rates and comments and can send the &ldquo;Under Review&rdquo;
+    notification. <strong>Chairman</strong> also approves, rejects and sends decisions.
+    <strong>Observer</strong> views only. <strong>No access</strong> hides that
+    programme&rsquo;s applications entirely.
+</p>
+<table class="table table-bordered table-striped">
+<thead>
+<tr>
+<th>ID</th>
+<th>Name</th>
+<th>Email</th>
+<th>Phone</th>
+<th>Account Type</th>
+<th>Travel</th>
+<th>RFG</th>
+<th>Status</th>
+<th>New Password</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+{% for u in all_users %}
+<tr>
+<td>{{ u.id }}</td>
+<td>{{ u.name }}<div class="text-muted small">{{ u.username }}</div></td>
+<td>{{ u.email }}</td>
+<td><input type="text" form="urow{{ u.id }}" name="update_mobile" class="form-control" value="{{ u.mobile_no }}"></td>
+<td>
+    {% if u.role == "System Reviewer" %}
+    <span class="badge bg-dark">System Reviewer</span>
+    {% else %}
+    <span class="text-muted small">Standard</span>
+    {% endif %}
+</td>
+<td>
+<select class="form-select" form="urow{{ u.id }}" name="update_travel_role">
+    <option value="">No access</option>
+    {% for choice in program_role_choices %}
+    <option value="{{ choice }}" {% if u.travel_role == choice %}selected{% endif %}>{{ choice }}</option>
+    {% endfor %}
+</select>
+</td>
+<td>
+<select class="form-select" form="urow{{ u.id }}" name="update_rfg_role">
+    <option value="">No access</option>
+    {% for choice in program_role_choices %}
+    <option value="{{ choice }}" {% if u.rfg_role == choice %}selected{% endif %}>{{ choice }}</option>
+    {% endfor %}
+</select>
+</td>
+<td>
+<select class="form-select" form="urow{{ u.id }}" name="update_status">
+    <option value="Active" {% if u.status == "Active" %}selected{% endif %}>Active</option>
+    <option value="Inactive" {% if u.status == "Inactive" %}selected{% endif %}>Inactive</option>
+</select>
+</td>
+<td><input type="password" form="urow{{ u.id }}" name="update_password" class="form-control" placeholder="New Password"></td>
+<td><button type="submit" form="urow{{ u.id }}" class="btn btn-primary btn-sm">Update</button></td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+{# One form per user, outside the table so the markup is valid. Each row's
+   controls point at their own form via the HTML form="" attribute. #}
+{% for u in all_users %}
+<form id="urow{{ u.id }}" method="POST">
+    {% csrf_token %}
+    <input type="hidden" name="update_user_id" value="{{ u.id }}">
+</form>
+{% endfor %}
+</div>
+</div>
+{% endif %}
+
+</div>
+</div>
+</div>
+</div>
+
+<!-- ================= SCRIPTS ================= -->
+<script>
+function previewProfileImage(event){
+    const reader = new FileReader();
+    reader.onload = function(){
+        document.getElementById("previewImage").src = reader.result;
+    }
+    reader.readAsDataURL(event.target.files[0]);
+}
+
+// Phone input: digits only, max 10
+document.addEventListener("DOMContentLoaded", function () {
+    const phoneInputs = document.querySelectorAll('input[name="phone_number"], input[name="new_mobile"], input[name="update_mobile"]');
+    phoneInputs.forEach(function(input){
+        input.addEventListener("input", function () {
+            this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10);
+        });
+    });
+});
+</script>
+{% endblock %}
+
+
+

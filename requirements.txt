@@ -1,0 +1,25 @@
+asgiref==3.8.1
+certifi==2025.1.31
+charset-normalizer==3.4.1
+Django==5.1.7
+dotenv==0.9.9
+et_xmlfile==2.0.0
+idna==3.10
+#numpy==2.2.4
+openpyxl==3.1.5
+#pandas==2.2.3
+psycopg[binary]==3.2.3
+python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
+pytz==2025.1
+requests==2.32.3
+six==1.17.0
+sqlparse==0.5.3
+tzdata==2025.1
+urllib3==2.3.0
+# binary wheel: avoids needing a C toolchain + libpq-dev in the container image
+psycopg2-binary==2.9.10
+
+# deployment
+gunicorn==26.0.0
+whitenoise==6.11.0

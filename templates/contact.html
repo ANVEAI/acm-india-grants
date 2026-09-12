@@ -1,0 +1,74 @@
+{% extends "common/base_layout.html" %}
+{% load static %}
+
+{% block content %}
+
+<div style="background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); 
+            color: #fff; 
+            font-family:'Poppins', sans-serif; 
+            min-height: 80vh; 
+            padding: 60px 0;">
+
+  <div class="container">
+    <div class="text-center mb-5">
+      <h1 style="font-weight:700; color:#00e0ff;">Contact Us</h1>
+      <p style="color:#ccc;">We’d love to hear from you! Reach out to us anytime.</p>
+    </div>
+
+    <div class="row g-5 justify-content-center">
+      
+      <!-- Contact Info -->
+      <div class="col-lg-5 col-md-6">
+        <div style="background:rgba(255,255,255,0.1); padding:30px; border-radius:15px; 
+                    box-shadow:0 0 20px rgba(0,0,0,0.3); backdrop-filter:blur(10px);">
+          <h4 style="margin-bottom:20px; color:#00e0ff;">Get in Touch</h4>
+          <p><i class="bi bi-geo-alt-fill" style="color:#ffbb33;"></i> &nbsp; IIT Kanpur, India</p>
+          <p><i class="bi bi-envelope-fill" style="color:#00d9ff;"></i> &nbsp; info@plantmonitor.com</p>
+          <p><i class="bi bi-telephone-fill" style="color:#4aff93;"></i> &nbsp; +971 555 123 456</p>
+          <hr style="border-color:rgba(255,255,255,0.2);">
+          <p>Follow us:</p>
+          <div style="font-size:1.5rem;">
+            <a href="#" style="color:#00e0ff; margin-right:15px;"><i class="bi bi-facebook"></i></a>
+            <a href="#" style="color:#00e0ff; margin-right:15px;"><i class="bi bi-twitter"></i></a>
+            <a href="#" style="color:#00e0ff; margin-right:15px;"><i class="bi bi-instagram"></i></a>
+            <a href="#" style="color:#00e0ff;"><i class="bi bi-linkedin"></i></a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contact Form -->
+      <div class="col-lg-6 col-md-6">
+        <div style="background:rgba(255,255,255,0.1); padding:30px; border-radius:15px; 
+                    box-shadow:0 0 20px rgba(0,0,0,0.3); backdrop-filter:blur(10px);">
+          <h4 style="margin-bottom:20px; color:#00e0ff;">Send a Message</h4>
+
+          <form method="post" action="#">
+            {% csrf_token %}
+            <div class="mb-3">
+              <input type="text" class="form-control" name="name" placeholder="Your Name" required
+                     style="background:rgba(255,255,255,0.1); border:none; color:#fff;">
+            </div>
+            <div class="mb-3">
+              <input type="email" class="form-control" name="email" placeholder="Your Email" required
+                     style="background:rgba(255,255,255,0.1); border:none; color:#fff;">
+            </div>
+            <div class="mb-3">
+              <textarea class="form-control" name="message" rows="4" placeholder="Your Message" required
+                        style="background:rgba(255,255,255,0.1); border:none; color:#fff;"></textarea>
+            </div>
+            <div class="text-end">
+              <button type="submit" class="btn btn-primary"
+                      style="background:#00e0ff; border:none; font-weight:600;">
+                Send Message
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

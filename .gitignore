@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------------------
+# Python / virtualenv
+# ---------------------------------------------------------------------------
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ---------------------------------------------------------------------------
+# Secrets. example.env is the committed template and holds only placeholders;
+# the real .env never goes in.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!example.env
+
+# ---------------------------------------------------------------------------
+# Applicant uploads. These are real PDFs submitted by real people -- papers,
+# acceptance letters, invitation letters. In production they live on the
+# GCSFuse mount at /mnt/media, not here.
+# ---------------------------------------------------------------------------
+uploads/
+Media/
+
+# ---------------------------------------------------------------------------
+# Build output. static/ IS source (the theme); staticfiles/ is what
+# collectstatic generates from it and is rebuilt in the Docker image.
+# ---------------------------------------------------------------------------
+staticfiles/
+
+# ---------------------------------------------------------------------------
+# Database dumps. student_travel_grant.sql is the schema of record, but the
+# file as it stands also carries live rows: APPLICATIONS, USERS (with MD5
+# password hashes) and django_session. Excluded until a schema-only version
+# exists to commit in its place.
+# ---------------------------------------------------------------------------
+*.sql
+# ...except the schema-only export, which is safe to version.
+!schema.sql
+
+# ---------------------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------------------
+*.log
+django_debug.log
+
+# ---------------------------------------------------------------------------
+# OS / editor
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,295 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Track Application - ACM India Grants</title>
+    <link rel="stylesheet" type="text/css" href="{% static 'css/bootstrap.min.css' %}" />
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .tracking-container {
+            width: 100%;
+            max-width: 500px;
+            padding: 20px;
+        }
+
+        .tracking-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            border: 1px solid #e9ecef;
+        }
+
+        .tracking-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .tracking-header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+
+        .tracking-header p {
+            font-size: 14px;
+            color: #6c757d;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn-track {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .btn-track:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-track:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .alert {
+            margin-bottom: 20px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .back-link a {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 480px) {
+            .tracking-card {
+                padding: 30px 20px;
+            }
+
+            .tracking-header h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="tracking-container">
+        <div class="tracking-card">
+            <div class="tracking-header">
+                <h1>Track Your Application</h1>
+                <p>Enter your tracking code to view application status</p>
+            </div>
+
+            <div class="alert alert-danger" id="errorAlert"></div>
+            <div class="alert alert-success" id="successAlert"></div>
+
+            <form id="trackingForm">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="trackingCode">Tracking Code</label>
+                    <input type="text" id="trackingCode" name="tracking_code" placeholder="e.g., TG-2025-001" required>
+                </div>
+
+                <div class="loading-spinner" id="loadingSpinner">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 10px; color: #667eea;">Searching...</p>
+                </div>
+
+                <button type="submit" class="btn-track" id="trackBtn">Track Application</button>
+            </form>
+
+<div class="back-link d-flex align-items-center gap-3">
+    <a href="{% url 'travel_grant_form' %}" class="btn btn-outline-secondary">
+        <i class="feather-arrow-left me-2"></i> New Application
+    </a>
+      {% if user.is_authenticated %}
+                <a href="{% url 'dashboard' %}" class="btn btn-sm btn-light">
+                    <i class="feather-settings me-1"></i> Dashboard
+                </a>
+                <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-danger">
+                    <i class="feather-log-out me-1"></i> Logout
+                </a>
+                {% else %}
+                <a href="{% url 'login' %}" class="btn btn-outline-secondary">
+        <i class="feather-log-in me-1"></i> Login
+    </a>
+                {% endif %}
+   
+</div>
+
+        </div>
+    </div>
+
+    <script src="{% static 'js/bootstrap.min.js' %}"></script>
+    <script>
+        const form = document.getElementById('trackingForm');
+        const trackingInput = document.getElementById('trackingCode');
+        const trackBtn = document.getElementById('trackBtn');
+        const errorAlert = document.getElementById('errorAlert');
+        const successAlert = document.getElementById('successAlert');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // Hide alerts
+            errorAlert.style.display = 'none';
+            successAlert.style.display = 'none';
+
+            const trackingCode = trackingInput.value.trim();
+
+            if (!trackingCode) {
+                showError('Please enter a tracking code');
+                return;
+            }
+
+            // Show loading
+            trackBtn.disabled = true;
+            loadingSpinner.style.display = 'block';
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+                const response = await fetch('{% url "get_application_by_tracking" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ tracking_code: trackingCode })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to fetch application');
+                }
+
+                // Success - redirect
+                showSuccess('Application found! Redirecting...');
+                setTimeout(() => {
+                    window.location.href = data.redirect_url;
+                }, 1000);
+
+            } catch (error) {
+                showError(error.message || 'An error occurred. Please try again.');
+                trackBtn.disabled = false;
+                loadingSpinner.style.display = 'none';
+            }
+        });
+
+        function showError(message) {
+            errorAlert.textContent = message;
+            errorAlert.style.display = 'block';
+        }
+
+        function showSuccess(message) {
+            successAlert.textContent = message;
+            successAlert.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

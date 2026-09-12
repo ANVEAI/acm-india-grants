@@ -1,0 +1,356 @@
+{% extends "common/base_layout.html" %}
+{% load static %}
+
+{% block title %}Dashboard - Travel Grant Management System{% endblock %}
+
+{% block page_title %}Dashboard{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'home' %}">Home</a></li>
+        <li class="breadcrumb-item active">Dashboard</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="main-content">
+    <div class="container-fluid">
+        <!-- Stats Cards Row -->
+        <div class="row mb-4">
+            <div class="col-md-3 col-sm-6">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="text-muted fs-12 fw-bold mb-2">Total Grants</h6>
+                                <h3 class="fw-bold mb-0">124</h3>
+                                <small class="text-success">
+                                    <i class="feather-arrow-up"></i> +5.2% this month
+                                </small>
+                            </div>
+                            <div class="avatar avatar-md bg-primary text-white">
+                                <i class="feather-file-text"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3 col-sm-6">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="text-muted fs-12 fw-bold mb-2">Pending Approval</h6>
+                                <h3 class="fw-bold mb-0">23</h3>
+                                <small class="text-warning">
+                                    <i class="feather-alert-circle"></i> Action required
+                                </small>
+                            </div>
+                            <div class="avatar avatar-md bg-warning text-white">
+                                <i class="feather-clock"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3 col-sm-6">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="text-muted fs-12 fw-bold mb-2">Approved</h6>
+                                <h3 class="fw-bold mb-0">89</h3>
+                                <small class="text-success">
+                                    <i class="feather-check"></i> Ready to process
+                                </small>
+                            </div>
+                            <div class="avatar avatar-md bg-success text-white">
+                                <i class="feather-check-circle"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3 col-sm-6">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="text-muted fs-12 fw-bold mb-2">Total Amount</h6>
+                                <h3 class="fw-bold mb-0">$45.2K</h3>
+                                <small class="text-info">
+                                    <i class="feather-trending-up"></i> Allocated this year
+                                </small>
+                            </div>
+                            <div class="avatar avatar-md bg-info text-white">
+                                <i class="feather-dollar-sign"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Grants Row -->
+        <div class="row mb-4">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="card-title m-0">Recent Travel Grants</h5>
+                            <a href="#" class="text-primary text-decoration-none fs-13">View All</a>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Grant ID</th>
+                                        <th>Employee</th>
+                                        <th>Destination</th>
+                                        <th>Amount</th>
+                                        <th>Status</th>
+                                        <th>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>#TG-001</td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <div class="avatar avatar-sm bg-primary text-white">
+                                                    <span>JD</span>
+                                                </div>
+                                                <span>John Doe</span>
+                                            </div>
+                                        </td>
+                                        <td>New York, USA</td>
+                                        <td>$2,500</td>
+                                        <td>
+                                            <span class="badge bg-success">Approved</span>
+                                        </td>
+                                        <td>Jan 10, 2026</td>
+                                    </tr>
+                                    <tr>
+                                        <td>#TG-002</td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <div class="avatar avatar-sm bg-success text-white">
+                                                    <span>JS</span>
+                                                </div>
+                                                <span>Jane Smith</span>
+                                            </div>
+                                        </td>
+                                        <td>London, UK</td>
+                                        <td>$3,200</td>
+                                        <td>
+                                            <span class="badge bg-warning">Pending</span>
+                                        </td>
+                                        <td>Jan 12, 2026</td>
+                                    </tr>
+                                    <tr>
+                                        <td>#TG-003</td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <div class="avatar avatar-sm bg-info text-white">
+                                                    <span>MB</span>
+                                                </div>
+                                                <span>Mike Brown</span>
+                                            </div>
+                                        </td>
+                                        <td>Tokyo, Japan</td>
+                                        <td>$4,100</td>
+                                        <td>
+                                            <span class="badge bg-danger">Rejected</span>
+                                        </td>
+                                        <td>Jan 08, 2026</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="col-lg-4">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Grant Status Distribution</h5>
+
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fs-13">Approved</span>
+                                <span class="fw-bold">72%</span>
+                            </div>
+                            <div class="progress" role="progressbar">
+                                <div class="progress-bar bg-success" style="width: 72%"></div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fs-13">Pending</span>
+                                <span class="fw-bold">18%</span>
+                            </div>
+                            <div class="progress" role="progressbar">
+                                <div class="progress-bar bg-warning" style="width: 18%"></div>
+                            </div>
+                        </div>
+
+                        <div class="mb-0">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fs-13">Rejected</span>
+                                <span class="fw-bold">10%</span>
+                            </div>
+                            <div class="progress" role="progressbar">
+                                <div class="progress-bar bg-danger" style="width: 10%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Quick Actions</h5>
+
+                        <a href="#" class="btn btn-primary w-100 mb-2">
+                            <i class="feather-plus me-2"></i> New Grant Request
+                        </a>
+                        <a href="#" class="btn btn-secondary w-100 mb-2">
+                            <i class="feather-list me-2"></i> View Pending
+                        </a>
+                        <a href="#" class="btn btn-secondary w-100">
+                            <i class="feather-download me-2"></i> Export Report
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row (Optional) -->
+        <div class="row">
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Monthly Grants Trend</h5>
+                        <p class="text-muted fs-13 mb-0">Chart placeholder - Add your chart library here (Chart.js, ApexCharts, etc.)</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Top Destinations</h5>
+                        <p class="text-muted fs-13 mb-0">Chart placeholder - Add your chart library here (Chart.js, ApexCharts, etc.)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Dashboard specific styles */
+    .table-hover tbody tr:hover {
+        background-color: #f8f9fa;
+    }
+
+    .progress {
+        height: 6px;
+        border-radius: 3px;
+        background-color: #e9ecef;
+    }
+
+    .progress-bar {
+        transition: width 0.3s ease;
+    }
+
+    .avatar {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 12px;
+    }
+
+    .bg-primary {
+        background-color: #007bff;
+    }
+
+    .bg-success {
+        background-color: #28a745;
+    }
+
+    .bg-warning {
+        background-color: #ffc107;
+        color: #333;
+    }
+
+    .bg-danger {
+        background-color: #dc3545;
+    }
+
+    .bg-info {
+        background-color: #17a2b8;
+    }
+
+    .badge {
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .badge-success {
+        background-color: #d4edda;
+        color: #155724;
+    }
+
+    .badge-warning {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+
+    .badge-danger {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set dashboard as active menu item
+        setActiveMenuItem('a[href="/"]');
+
+        // Example: Initialize with a welcome message
+        console.log('Dashboard loaded successfully');
+
+        // Example: You can fetch data from API here
+        // fetchDashboardData();
+    });
+
+    // Example function to fetch dashboard data
+    async function fetchDashboardData() {
+        try {
+            const data = await apiCall('/api/dashboard/', {
+                method: 'GET'
+            });
+            console.log('Dashboard data:', data);
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error);
+        }
+    }
+</script>
+{% endblock %}

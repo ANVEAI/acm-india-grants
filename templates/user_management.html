@@ -1,0 +1,294 @@
+{% extends "common/base_layout.html" %}
+{% load static %}
+
+{% block content %}
+
+<link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet" />
+<script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
+
+<style>
+.page-title {
+  color: #00e0ff;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.card-custom {
+  background: #16233b;
+  border-radius: 15px;
+  padding: 25px;
+  color: white;
+}
+
+.btn-glow {
+  background: #00e0ff;
+  color: black;
+  font-weight: 600;
+  box-shadow: 0 0 12px #00e0ff;
+}
+.btn-glow:hover {
+  background: #04bdda;
+}
+
+.modal-content {
+  background: #101c2f;
+  color: #fff;
+  border: 1px solid #00e0ff;
+}
+
+.form-control {
+  background: #0f1a2e;
+  color: #fff;
+  border: 1px solid #1e3557;
+}
+.form-control:focus {
+  box-shadow: 0 0 5px #00e0ff;
+  border-color: #00e0ff;
+}
+
+.label-text {
+  font-weight: 600;
+  color: #00e0ff;
+}
+</style>
+
+<div class="container-fluid py-4" style="min-height:100vh; background:#0a0f1f;">
+
+  <div class="text-center mb-4">
+    <h1 class="page-title">👤 User Management</h1>
+    <p style="color:#00ff6a;">Add, Update & Manage System Users</p>
+  </div>
+
+  <div class="d-flex justify-content-end mb-3">
+    <button class="btn btn-glow" data-bs-toggle="modal" data-bs-target="#addUserModal">
+      ➕ Add New User
+    </button>
+  </div>
+
+  <div class="card-custom">
+    <h5 class="text-center mb-3" style="color:#00e0ff;">All Users</h5>
+    <div id="usersTable"></div>
+  </div>
+
+</div>
+
+
+<!-- ADD USER MODAL -->
+<div class="modal fade" id="addUserModal">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">➕ Add New User</h5>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <form id="addUserForm">
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="label-text">Name</label>
+              <input type="text" class="form-control" name="name" required>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="label-text">Username</label>
+              <input type="text" class="form-control" name="username" required>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="label-text">Email</label>
+              <input type="email" class="form-control" name="email" required>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="label-text">Mobile Number</label>
+              <input type="text" class="form-control" name="mobile_no">
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="label-text">Designation</label>
+              <input type="text" class="form-control" name="designation" required>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="label-text">Role</label>
+              <select class="form-select" name="role">
+                <option>Admin</option>
+                <option>User</option>
+                <option>Viewer</option>
+              </select>
+            </div>
+
+            <div class="col-md-12 mb-3">
+              <label class="label-text">Password</label>
+              <input type="password" class="form-control" name="password" required>
+            </div>
+          </div>
+
+        </form>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button class="btn btn-glow" onclick="submitAddUser()">Create User</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- EDIT USER MODAL -->
+<div class="modal fade" id="editUserModal">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">✏️ Update User</h5>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <form id="editUserForm">
+
+          <input type="hidden" name="id">
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="label-text">Name</label>
+              <input type="text" class="form-control" name="name">
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="label-text">Mobile No</label>
+              <input type="text" class="form-control" name="mobile_no">
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="label-text">Designation</label>
+              <input type="text" class="form-control" name="designation">
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="label-text">Role</label>
+              <select class="form-select" name="role">
+                <option>Admin</option>
+                <option>User</option>
+                <option>Viewer</option>
+              </select>
+            </div>
+          </div>
+
+        </form>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button class="btn btn-glow" onclick="submitUpdateUser()">Update User</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<script>
+// Load users into table
+const users = JSON.parse('{{ users_json|escapejs }}');
+
+new gridjs.Grid({
+  columns: [
+    "ID",
+    "Name",
+    "Email",
+    "Mobile",
+    "Designation",
+    "Role",
+    "Status",
+    {
+      name: "Actions",
+      formatter: (_, row) =>
+        gridjs.html(`
+          <button class="btn btn-sm btn-glow" onclick="openEditUser(${row.cells[0].data})">Edit</button>
+          <button class="btn btn-sm btn-danger ms-2" onclick="toggleUser(${row.cells[0].data})">Toggle</button>
+        `)
+    }
+  ],
+
+  data: users.map(u => [
+    u.id,
+    u.name,
+    u.email,
+    u.mobile_no,
+    u.designation,
+    u.role,
+    u.is_active ? "Active" : "Inactive"
+  ]),
+
+  search: true,
+  sort: true,
+  pagination: { enabled: true, limit: 10 },
+
+  style: {
+    table: { background: "#ffffff", color: "#000000" },
+    th: { background: "#0f1a2e", color: "#00e0ff" },
+    td: { color: "#000000", borderBottom: "1px solid #1f2e4d" }
+  }
+}).render(document.getElementById("usersTable"));
+
+
+// SUBMIT NEW USER
+function submitAddUser() {
+  const formData = new FormData(document.getElementById("addUserForm"));
+
+  fetch('/api/users/add/', {
+    method: 'POST',
+    body: formData
+  })
+  .then(res => res.json())
+  .then(() => location.reload());
+}
+
+
+// OPEN EDIT MODAL
+function openEditUser(id) {
+  fetch(`/api/users/get/?id=${id}`)
+    .then(res => res.json())
+    .then(user => {
+      const form = document.getElementById("editUserForm");
+      form.id.value = user.id;
+      form.name.value = user.name;
+      form.mobile_no.value = user.mobile_no;
+      form.designation.value = user.designation;
+      form.role.value = user.role;
+
+      new bootstrap.Modal(document.getElementById("editUserModal")).show();
+    });
+}
+
+
+// SUBMIT UPDATE
+function submitUpdateUser() {
+  const formData = new FormData(document.getElementById("editUserForm"));
+
+  fetch('/api/users/update/', {
+    method: 'POST',
+    body: formData
+  })
+  .then(res => res.json())
+  .then(() => location.reload());
+}
+
+
+// ACTIVATE / DEACTIVATE
+function toggleUser(id) {
+  fetch(`/api/users/toggle/?id=${id}`)
+    .then(res => res.json())
+    .then(() => location.reload());
+}
+
+</script>
+
+{% endblock %}

@@ -1,0 +1,1269 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grant Application - ACM India Grants</title>
+
+    <!-- GOOGLE FONTS -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- BOOTSTRAP: the markup below already uses .row / .col-md-6 / .mb-3 /
+         .d-flex, but the stylesheet was never linked, so none of the grid or
+         spacing applied and every field stacked full width. Loaded before the
+         custom styles so those still win. -->
+    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
+
+    <!-- CLEAN MODERN UI STYLES -->
+    <style>
+        /* Bootstrap's reboot supplies this too, but state it explicitly so a
+           field's padding and border can never push it outside its column. */
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(180deg, #f8fafc, #eef2ff);
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #1f2937;
+        }
+
+        .grant-container {
+            max-width: 960px;
+            margin: 40px auto 80px;
+        }
+
+        /* HEADER */
+        .grant-header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 42px 30px;
+            background: linear-gradient(135deg, #1e3a8a, #2563eb);
+            color: #ffffff;
+            border-radius: 18px;
+            box-shadow: 0 25px 50px rgba(30, 58, 138, 0.3);
+        }
+
+        .grant-header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .grant-header p {
+            font-size: 15px;
+            opacity: 0.9;
+        }
+
+        /* SECTION CARD */
+        .grant-section {
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 12px 28px rgba(0,0,0,0.08);
+            margin-bottom: 32px;
+            border: 1px solid #e5e7eb;
+            overflow: hidden;
+        }
+
+        .grant-section-header {
+            background: #f1f5f9;
+            padding: 18px 24px;
+            font-weight: 600;
+            font-size: 15px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .grant-body {
+            padding: 26px;
+        }
+
+        /* The section bodies also carry Bootstrap's .row. Cancel the grid's
+           negative side margins so no column can sit outside the card, and let
+           the gutter provide the space between the two columns. Bottom padding
+           is trimmed because each field block already adds .mb-3 (16px), which
+           keeps the inset an even 26px on all four sides. */
+        .grant-body.row {
+            --bs-gutter-x: 24px;
+            margin-left: 0;
+            margin-right: 0;
+            padding: 26px 14px 10px;
+        }
+
+        /* FORM */
+        label {
+            display: block;
+            font-weight: 500;
+            font-size: 14px;
+            margin-bottom: 6px;
+        }
+
+        /* Give every control the same height so rows line up across columns. */
+        .form-control,
+        select.form-control {
+            min-height: 44px;
+        }
+
+        textarea.form-control {
+            min-height: auto;
+        }
+
+        /* The radio pair and its label should breathe like any other field. */
+        .grant-body .form-check-inline,
+        .grant-body .d-flex.gap-4 {
+            margin-top: 6px;
+        }
+
+        .grant-body .d-flex.gap-4 label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 0;
+        }
+
+        @media (max-width: 576px) {
+            .grant-container {
+                margin: 20px auto 50px;
+            }
+
+            .grant-body.row {
+                padding: 18px 10px 4px;
+            }
+
+            .grant-header {
+                padding: 30px 18px;
+            }
+        }
+
+        .required {
+            color: #dc2626;
+        }
+
+        .form-control {
+            border-radius: 9px;
+            padding: 11px 14px;
+            font-size: 14px;
+            border: 1px solid #d1d5db;
+            width: 100%;
+        }
+
+        .form-control:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+        }
+
+        textarea.form-control {
+            resize: vertical;
+        }
+
+        /* SUBMIT */
+        .submit-box {
+            background: #ffffff;
+            padding: 42px;
+            border-radius: 18px;
+            text-align: center;
+            box-shadow: 0 15px 35px rgba(0,0,0,.1);
+            border: 1px solid #e5e7eb;
+        }
+
+        .btn-submit {
+            background: linear-gradient(135deg, #16a34a, #22c55e);
+            border: none;
+            color: #ffffff;
+            padding: 15px 50px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 12px;
+            transition: all .2s ease;
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(34, 197, 94, 0.45);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* FEEDBACK */
+        .loading-spinner {
+            display: none;
+            width: 26px;
+            height: 26px;
+            border: 3px solid #e5e7eb;
+            border-top: 3px solid #2563eb;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 18px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .success-message {
+            display: none;
+            background: #dcfce7;
+            color: #065f46;
+            padding: 18px;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-weight: 500;
+        }
+
+        /* SUCCESS SCREEN — shown in place of the form after a submission. */
+        .success-panel {
+            display: none;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 18px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, .1);
+            padding: 48px 32px;
+            text-align: center;
+        }
+
+        .success-icon {
+            font-size: 46px;
+            line-height: 1;
+            margin-bottom: 14px;
+        }
+
+        .success-panel h2 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #065f46;
+            margin-bottom: 18px;
+        }
+
+        .success-sub {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 8px;
+        }
+
+        .tracking-code {
+            display: inline-block;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            color: #1e3a8a;
+            background: #eef2ff;
+            border: 1px dashed #c7d2fe;
+            border-radius: 10px;
+            padding: 12px 24px;
+            margin-bottom: 20px;
+            word-break: break-all;
+        }
+
+        .success-hint {
+            font-size: 14px;
+            color: #6b7280;
+            max-width: 520px;
+            margin: 0 auto 28px;
+            line-height: 1.6;
+        }
+
+        .success-actions {
+            display: flex;
+            gap: 14px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .success-actions .btn {
+            padding: 13px 28px;
+            font-size: 15px;
+            font-weight: 600;
+            border-radius: 12px;
+        }
+
+        .success-actions .btn-outline-primary {
+            border: 1px solid #2563eb;
+            color: #2563eb;
+            background: transparent;
+        }
+
+        .success-actions .btn-outline-primary:hover {
+            background: #2563eb;
+            color: #ffffff;
+        }
+
+        /* Hidden until validation flags the field. Without this rule every
+           "X is required" message renders permanently on an empty form. */
+        .error-message {
+            display: none;
+            font-size: 12px;
+            color: #dc2626;
+            margin-top: 4px;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .form-control.is-invalid {
+            border-color: #dc2626;
+        }
+
+        .form-control.is-invalid:focus {
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+        }
+    </style>
+</head>
+<body>
+<div class="page-wrapper">
+    <div class="content container-fluid grant-container">
+
+        <!-- HEADER -->
+        <div class="grant-header">
+            <h1 id="grantHeaderTitle">ACM India Grant Application</h1>
+            <p id="grantHeaderSubtitle">Choose the grant you are applying for to begin</p>
+        
+            <p style="margin-top: 8px;">
+                <a href="{% url 'home' %}"
+                   style="color:#fafbfc; font-weight:500; text-decoration:underline;
+                          animation: blink 1s infinite;">
+                    Track Application
+                </a>
+            </p>
+        </div>
+        
+        <style>
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        </style>
+
+        <!-- FORM START -->
+        <!-- novalidate: validation is done in JS below so the inline .error-message
+             elements are used instead of the browser's own popup bubbles. -->
+        <form id="applicationForm" enctype="multipart/form-data" method="POST" novalidate>
+            {% csrf_token %}
+
+            <!-- ============ SHARED: asked for every programme ============ -->
+            <div class="grant-section">
+                <div class="grant-section-header">Applicant Information</div>
+                <div class="grant-body row">
+
+                    <div class="col-md-6 mb-3">
+                        <label>Email <span class="required">*</span></label>
+                        <input type="email" class="form-control" name="email" required>
+                        <div class="error-message">Email is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Applicant Name <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="applicant_name" placeholder="First Name Last Name / First Name Initials" required>
+                        <div class="error-message">Applicant name is required</div>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label>Name of the Institution <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="institution_name" required>
+                        <div class="error-message">Institution is required</div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ============ PROGRAMME SELECTOR ============ -->
+            <div class="grant-section">
+                <div class="grant-section-header">Which grant are you applying for?</div>
+                <div class="grant-body row">
+                    <div class="col-md-12 mb-3">
+                        <label>Grant Type <span class="required">*</span></label>
+                        <select class="form-control" name="program" id="programSelect" required>
+                            <option value="">Select</option>
+                            <option value="TRAVEL">Travel Support</option>
+                            <option value="RFG">Research Facilitation Grant</option>
+                        </select>
+                        <div class="error-message">Please choose a grant type</div>
+                        <small class="text-muted" id="programHint"></small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ TRAVEL SUPPORT ============ -->
+            <div id="travelSections" class="program-block" style="display:none;">
+
+            <!-- PERSONAL INFO -->
+            <div class="grant-section">
+                <div class="grant-section-header">Personal Information</div>
+                <div class="grant-body row">
+
+                    <div class="col-md-6 mb-3">
+                        <label>Mobile Phone <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="mobile_phone" required>
+                        <div class="error-message">Mobile phone is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Enrolment Type <span class="required">*</span></label>
+                        <select class="form-control" name="enrolment_type" required>
+                            <option value="">Select</option>
+                            <option>Full Time</option>
+                            <option>Part Time</option>
+                        </select>
+                        <div class="error-message">Enrolment type is required</div>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label>Postal Address</label>
+                        <textarea class="form-control" rows="3" name="postal_address"></textarea>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ACADEMIC INFO -->
+            <div class="grant-section">
+                <div class="grant-section-header">Academic Information</div>
+                <div class="grant-body row">
+
+                    <div class="col-md-6 mb-3">
+                        <label>Current Degree Type of Study <span class="required">*</span></label>
+                        <select class="form-control" name="current_degree_type" required>
+                            <option value="">Select</option>
+                            <option>Bachelors</option>
+                            <option>Masters</option>
+                            <option>Doctoral</option>
+                            <option>Other</option>
+                        </select>
+                        <div class="error-message">Degree type is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Current Degree Program of Study <span class="required">*</span></label>
+                        <select class="form-control" name="current_degree_program" required>
+                            <option value="">Select</option>
+                            <option>Computer Science</option>
+                            <option>Computer Engineering</option>
+                            <option>Information Technology</option>
+                            <option>Data Science</option>
+                            <option>Artificial Intelligence</option>
+                            <option>Machine Learning</option>
+                            <option>Other</option>
+                        </select>
+                        <div class="error-message">Degree program is required</div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- FACULTY INFO -->
+            <div class="grant-section">
+                <div class="grant-section-header">Supervisor's Contact Details</div>
+                <div class="grant-body row">
+
+                    <div class="col-md-6 mb-3">
+                        <label>Name <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="faculty_name" required>
+                        <div class="error-message">Faculty name is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Email <span class="required">*</span></label>
+                        <input type="email" class="form-control" name="faculty_email" required>
+                        <div class="error-message">Faculty email is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Phone</label>
+                        <input type="text" class="form-control" name="faculty_phone">
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Address</label>
+                        <input type="text" class="form-control" name="faculty_address">
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Designation</label>
+                        <select class="form-control" name="faculty_designation">
+                            <option value="">Select</option>
+                            <option>Professor</option>
+                            <option>Associate Professor</option>
+                            <option>Assistant Professor</option>
+                            <option>Research Scientist</option>
+                        </select>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- CONFERENCE INFO -->
+            <div class="grant-section">
+                <div class="grant-section-header">Conference Information</div>
+                <div class="grant-body row">
+
+                    <div class="col-md-6 mb-3">
+                        <label>Conference Name <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="conference_name" required>
+                        <div class="error-message">Conference name is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Conference Website <span class="required">*</span></label>
+                        <input type="url" class="form-control" name="conference_website" required>
+                        <div class="error-message">Conference website is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Start Date of the Conference <span class="required">*</span></label>
+                        <input type="date" class="form-control" name="conference_start_date" required>
+                        <div class="error-message">Start date is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>End Date of the Conference <span class="required">*</span></label>
+                        <input type="date" class="form-control" name="conference_end_date" required>
+                        <div class="error-message">End date is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Location of the Conference <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="conference_location" required>
+                        <div class="error-message">Conference location is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Date of Paper Submission Deadline (Final) <span class="required">*</span></label>
+                        <input type="date" class="form-control" name="paper_submission_deadline" required>
+                        <div class="error-message">Paper submission deadline is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Date of Acceptance Notification (Email Received) <span class="required">*</span></label>
+                        <input type="date" class="form-control" name="acceptance_notification_date" required>
+                        <div class="error-message">Acceptance notification date is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Type of Paper <span class="required">*</span></label>
+                        <select class="form-control" name="paper_type" required>
+                            <option value="">Select</option>
+                            <option>Full Paper</option>
+                            <option>Short Paper</option>
+                            <option>Poster</option>
+                            <option>Workshop Paper</option>
+                        </select>
+                        <div class="error-message">Paper type is required</div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- PAPER & DOCUMENTS -->
+            <div class="grant-section">
+                <div class="grant-section-header">Publication Details</div>
+                <div class="grant-body row">
+
+                    <div class="col-md-6 mb-3">
+                        <label>Title of the Paper <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="paper_title" required>
+                        <div class="error-message">Paper title is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Upload a copy of the accepted paper (PDF format) <span class="required">*</span></label>
+                        <input type="file" class="form-control" name="paper_file" accept=".pdf" required>
+                        <div class="error-message">Paper file is required</div>
+                        <small class="text-muted">Max 10 MB</small>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Upload the acceptance notification letter <span class="required">*</span></label>
+                        <input type="file" class="form-control" name="acceptance_letter" accept=".pdf,.txt" required>
+                        <div class="error-message">Acceptance letter is required</div>
+                        <small class="text-muted">Max 10 MB</small>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- FINANCIAL INFO -->
+            <div class="grant-section">
+                <div class="grant-section-header">Financial Information</div>
+                <div class="grant-body row">
+
+                    <div class="col-md-6 mb-3">
+                        <label>Amount of support requested from ACM India-IARCS (₹) <span class="required">*</span></label>
+                        <input type="number" class="form-control" name="requested_amount" min="0" required>
+                        <div class="error-message">Amount is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Justification of the estimated expenses <span class="required">*</span></label>
+                        <textarea class="form-control" rows="3" name="budget_justification" required></textarea>
+                        <div class="error-message">Justification is required</div>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label>Have you availed of IARCS-ACMI travel grant award earlier? <span class="required">*</span></label>
+                        <div class="d-flex gap-4 mt-2">
+                            <label><input type="radio" name="previous_grant" value="Yes" required> Yes</label>
+                            <label><input type="radio" name="previous_grant" value="No"> No</label>
+                        </div>
+                        <div class="error-message">Please select Yes or No</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Registration Fee (₹) <span class="required">*</span></label>
+                        <input type="number" class="form-control" name="registration_fee" min="0" required>
+                        <div class="error-message">Registration fee is required</div>
+                    </div>
+
+                    <div id="previousGrantDetails" style="display:none;" class="col-md-12">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label>Conference Name</label>
+                                <input type="text" class="form-control" name="previous_conference_name">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label>Conference Dates <span class="required">*</span></label>
+                                <input type="text" class="form-control"
+                                       name="previous_conference_dates"
+                                       placeholder="dd-mm-yyyy"
+                                       maxlength="10"
+                                       pattern="\d{2}-\d{2}-\d{4}"
+                                       autocomplete="off">
+                                <div class="error-message">Previous conference dates are required</div>
+                                <small class="text-muted">Format: dd-mm-yyyy (e.g. 15-01-2023)</small>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            </div><!-- /#travelSections -->
+
+            <!-- ============ RESEARCH FACILITATION GRANT ============ -->
+            <div id="rfgSections" class="program-block" style="display:none;">
+
+            <!-- RFG APPLICANT DETAIL -->
+            <div class="grant-section">
+                <div class="grant-section-header">Applicant Details</div>
+                <div class="grant-body row">
+
+                    <div class="col-md-6 mb-3">
+                        <label>Preferred email address for correspondence <span class="required">*</span></label>
+                        <input type="email" class="form-control" name="rfg_correspondence_email" required>
+                        <div class="error-message">Correspondence email is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Affiliation status <span class="required">*</span></label>
+                        <select class="form-control" name="rfg_affiliation_status" id="rfgAffiliation" required>
+                            <option value="">Select</option>
+                            <option>Registered student</option>
+                            <option>Graduated student</option>
+                            <option>Post-doc</option>
+                            <option>Faculty member</option>
+                            <option>Other</option>
+                        </select>
+                        <div class="error-message">Affiliation status is required</div>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label>Department(s) to which affiliated <span class="required">*</span></label>
+                        <div class="d-flex flex-wrap gap-4 mt-2">
+                            <label><input type="checkbox" name="rfg_departments" value="Computer Science (and Engineering)" required> Computer Science (and Engineering)</label>
+                            <label><input type="checkbox" name="rfg_departments" value="Information Technology"> Information Technology</label>
+                            <label><input type="checkbox" name="rfg_departments" value="Data Science"> Data Science</label>
+                        </div>
+                        <input type="text" class="form-control mt-2" name="rfg_department_other" placeholder="Other department (optional)">
+                        <div class="error-message">Select at least one department</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3" id="rfgStudentTypeBlock">
+                        <label>In case of students, please indicate</label>
+                        <select class="form-control" name="rfg_student_type">
+                            <option value="">Select</option>
+                            <option>Ph.D. student</option>
+                            <option>M.Tech./M.S. student</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Faculty member to contact</label>
+                        <input type="text" class="form-control" name="rfg_faculty_name">
+                        <small class="text-muted">Only for students and post-docs</small>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Email address of faculty member</label>
+                        <input type="email" class="form-control" name="rfg_faculty_email">
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label>Have you availed of ACM India Research Facilitation Grant earlier? <span class="required">*</span></label>
+                        <div class="d-flex gap-4 mt-2">
+                            <label><input type="radio" name="rfg_previous" value="Yes" required> Yes</label>
+                            <label><input type="radio" name="rfg_previous" value="No"> No</label>
+                        </div>
+                        <div class="error-message">Please select Yes or No</div>
+                    </div>
+
+                    <div class="col-md-12 mb-3" id="rfgPreviousDetails" style="display:none;">
+                        <label>Month and year you last availed the grant, and amount received <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="rfg_previous_details"
+                               placeholder="e.g. March 2024, Rs. 40000">
+                        <div class="error-message">Previous grant details are required</div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- RFG SCHEME -->
+            <div class="grant-section">
+                <div class="grant-section-header">Scheme</div>
+                <div class="grant-body row">
+                    <div class="col-md-12 mb-3">
+                        <label>Choose the scheme you are applying under <span class="required">*</span></label>
+                        <select class="form-control" name="rfg_scheme" id="rfgSchemeSelect" required>
+                            <option value="">Select</option>
+                            <option value="OPEN_ACCESS">Open access charges for accepted paper</option>
+                            <option value="EXTRA_PAGE">Extra page charges for accepted paper</option>
+                            <option value="INVITATION">Invitation to attend reputed seminars/schools (invitation-only event)</option>
+                        </select>
+                        <div class="error-message">Please choose a scheme</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RFG: PAPER SCHEMES (open access / extra page) -->
+            <div id="rfgPaperBranch" style="display:none;">
+            <div class="grant-section">
+                <div class="grant-section-header">Publication Details</div>
+                <div class="grant-body row">
+
+                    <div class="col-md-12 mb-3">
+                        <label>Title of paper <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="rfg_paper_title" required>
+                        <div class="error-message">Paper title is required</div>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label>List of authors of paper <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="rfg_paper_authors" required>
+                        <div class="error-message">List of authors is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Name of conference or journal where paper has been accepted <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="rfg_venue_name" required>
+                        <div class="error-message">Conference or journal name is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Website (URL) of conference or journal <span class="required">*</span></label>
+                        <input type="url" class="form-control" name="rfg_venue_url" required>
+                        <div class="error-message">Conference or journal URL is required</div>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label>URL where a PDF of the accepted paper can be accessed <span class="required">*</span></label>
+                        <input type="url" class="form-control" name="rfg_paper_pdf_url" required>
+                        <div class="error-message">Paper PDF URL is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Upload PDF of acceptance letter <span class="required">*</span></label>
+                        <input type="file" class="form-control" name="rfg_acceptance_letter" accept="application/pdf" required>
+                        <div class="error-message">Acceptance letter is required</div>
+                        <small class="text-muted">PDF only, max 1 MB</small>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Upload PDF showing open access / extra page charges <span class="required">*</span></label>
+                        <input type="file" class="form-control" name="rfg_charges_doc" accept="application/pdf" required>
+                        <div class="error-message">Charges document is required</div>
+                        <small class="text-muted">PDF only, max 1 MB</small>
+                    </div>
+
+                </div>
+            </div>
+            </div><!-- /#rfgPaperBranch -->
+
+            <!-- RFG: INVITATION-ONLY EVENT -->
+            <div id="rfgInvitationBranch" style="display:none;">
+            <div class="grant-section">
+                <div class="grant-section-header">Event Details</div>
+                <div class="grant-body row">
+
+                    <div class="col-md-12 mb-3">
+                        <label>Name of research seminar / workshop / special program <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="rfg_event_name" required>
+                        <div class="error-message">Event name is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Website (URL) of event</label>
+                        <input type="url" class="form-control" name="rfg_event_url">
+                        <small class="text-muted">Optional &mdash; some invitation-only events have no public page</small>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Upload PDF of invitation letter <span class="required">*</span></label>
+                        <input type="file" class="form-control" name="rfg_invitation_letter" accept="application/pdf" required>
+                        <div class="error-message">Invitation letter is required</div>
+                        <small class="text-muted">Must show the event is invitation-only. PDF only, max 1 MB</small>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Name of a primary organizer <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="rfg_organizer_name" required>
+                        <div class="error-message">Organizer name is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Affiliation of primary organizer <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="rfg_organizer_affiliation" required>
+                        <div class="error-message">Organizer affiliation is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Email address of primary organizer <span class="required">*</span></label>
+                        <input type="email" class="form-control" name="rfg_organizer_email" required>
+                        <div class="error-message">Organizer email is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Location (city/town and country) of event <span class="required">*</span></label>
+                        <input type="text" class="form-control" name="rfg_event_location" required>
+                        <div class="error-message">Event location is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Starting date of event <span class="required">*</span></label>
+                        <input type="date" class="form-control" name="rfg_event_start" required>
+                        <div class="error-message">Event start date is required</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Ending date of event <span class="required">*</span></label>
+                        <input type="date" class="form-control" name="rfg_event_end" required>
+                        <div class="error-message">Event end date is required</div>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label>Heads under which you are seeking grant <span class="required">*</span></label>
+                        <div class="d-flex flex-wrap gap-4 mt-2">
+                            <label><input type="checkbox" name="rfg_grant_heads" value="Airfare" required> Airfare</label>
+                            <label><input type="checkbox" name="rfg_grant_heads" value="Registration fees"> Registration fees (if any)</label>
+                            <label><input type="checkbox" name="rfg_grant_heads" value="Per diem"> Per diem</label>
+                        </div>
+                        <div class="error-message">Select at least one grant head</div>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label>Breakup of the amount requested</label>
+                        <textarea class="form-control" rows="3" name="rfg_amount_breakdown"
+                                  placeholder="e.g. Airfare Rs. 40000, registration Rs. 15000"></textarea>
+                        <small class="text-muted">Optional, but it helps the committee assess the request.</small>
+                    </div>
+
+                </div>
+            </div>
+            </div><!-- /#rfgInvitationBranch -->
+
+            <!-- RFG FUNDING (both branches) -->
+            <div class="grant-section">
+                <div class="grant-section-header">Funding</div>
+                <div class="grant-body row">
+
+                    <div class="col-md-6 mb-3">
+                        <label>Amount of grant requested (₹) <span class="required">*</span></label>
+                        <input type="number" class="form-control" name="rfg_amount" min="0" step="1" required>
+                        <div class="error-message">Amount requested is required</div>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label>Justification for requested grant <span class="required">*</span></label>
+                        <textarea class="form-control" rows="4" name="rfg_justification" required
+                                  placeholder="You MUST indicate what other sources of funding you have tried to access, and the outcomes (if any)."></textarea>
+                        <div class="error-message">Justification is required</div>
+                    </div>
+
+                </div>
+            </div>
+
+            </div><!-- /#rfgSections -->
+
+            <!-- SUBMIT -->
+            <div class="submit-box">
+                <div class="loading-spinner" id="loadingSpinner"></div>
+                <button type="submit" class="btn btn-submit" id="submitBtn">Submit Application</button>
+                <div id="errorAlert" class="alert alert-danger mt-3" style="display:none;">
+                    <span id="errorMessage"></span>
+                </div>
+            </div>
+
+        </form>
+
+        <!-- SUCCESS SCREEN: replaces the form once an application is accepted. -->
+        <div class="success-panel" id="successPanel">
+            <div class="success-icon">✅</div>
+            <h2>Application submitted successfully!</h2>
+            <p class="success-sub">Your tracking code is</p>
+            <div class="tracking-code" id="successTrackingCode"></div>
+            <p class="success-hint">
+                Please keep this code safe — you will need it to check the status of your
+                application. A confirmation email has also been sent to you.
+            </p>
+            <div class="success-actions">
+                <button type="button" class="btn btn-outline-primary" id="submitAnotherBtn">
+                    Submit Another Application
+                </button>
+                <a href="#" class="btn btn-submit" id="trackApplicationBtn">
+                    Track Submitted Application
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JS -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+$(document).ready(function() {
+
+    // ============================================================
+    // PROGRAMME / SCHEME BRANCHING
+    // Sections are shown or hidden; the validator ignores anything hidden, so
+    // the markup keeps its `required` attributes either way.
+    // ============================================================
+    var PROGRAM_HEADINGS = {
+        '': {
+            title: 'ACM India Grant Application',
+            subtitle: 'Choose the grant you are applying for to begin',
+            tab: 'Grant Application - ACM India Grants'
+        },
+        TRAVEL: {
+            title: '\u2708\uFE0F Student Travel Grant Application',
+            subtitle: 'Apply for funding to present your research at conferences',
+            tab: 'Student Travel Grant Application - ACM India Grants'
+        },
+        RFG: {
+            title: '\uD83D\uDD2C Research Facilitation Grant Application',
+            subtitle: 'Apply for open access or extra page charges, or to attend an invitation-only seminar',
+            tab: 'Research Facilitation Grant Application - ACM India Grants'
+        }
+    };
+
+    var PROGRAM_HINTS = {
+        TRAVEL: 'Support to present an accepted paper at a conference.',
+        RFG: 'Open access or extra page charges for an accepted paper, or travel to an invitation-only seminar.'
+    };
+
+    function applyProgram() {
+        var program = $('#programSelect').val();
+
+        $('#travelSections').toggle(program === 'TRAVEL');
+        $('#rfgSections').toggle(program === 'RFG');
+        $('#programHint').text(PROGRAM_HINTS[program] || '');
+
+        // The success screen is this same page with the panels swapped, so
+        // setting the heading here is what makes the confirmation name the
+        // right grant too.
+        var heading = PROGRAM_HEADINGS[program] || PROGRAM_HEADINGS[''];
+        $('#grantHeaderTitle').text(heading.title);
+        $('#grantHeaderSubtitle').text(heading.subtitle);
+        document.title = heading.tab;
+
+        if (program !== 'RFG') {
+            $('#rfgSchemeSelect').val('');
+        }
+        applyScheme();
+
+        // Errors left over from the other programme are no longer relevant.
+        clearAllErrors();
+    }
+
+    function applyScheme() {
+        var scheme = $('#rfgSchemeSelect').val();
+        var isRfg  = $('#programSelect').val() === 'RFG';
+
+        $('#rfgPaperBranch').toggle(isRfg && (scheme === 'OPEN_ACCESS' || scheme === 'EXTRA_PAGE'));
+        $('#rfgInvitationBranch').toggle(isRfg && scheme === 'INVITATION');
+    }
+
+    $('#programSelect').on('change', applyProgram);
+    $('#rfgSchemeSelect').on('change', function () {
+        applyScheme();
+        clearAllErrors();
+    });
+
+    // RFG: details of a previous RFG award are required only when "Yes".
+    $('input[name="rfg_previous"]').on('change', function () {
+        var isYes = this.value === 'Yes';
+        var $details = $('input[name="rfg_previous_details"]');
+        $('#rfgPreviousDetails').toggle(isYes);
+        $details.prop('required', isYes);
+        if (!isYes) { setError($details, null); }
+    });
+
+    // Show previous grant details only if "Yes" is selected. Conference Dates
+    // becomes mandatory in that case — toggling the `required` attribute keeps
+    // it as the single source of truth for the validator, and stops the hidden
+    // field being flagged when "No" is selected.
+    $('input[name="previous_grant"]').change(function () {
+        var isYes = this.value === 'Yes';
+        var $dates = $('input[name="previous_conference_dates"]');
+
+        $('#previousGrantDetails').toggle(isYes);
+        $dates.prop('required', isYes);
+
+        if (!isYes) { setError($dates, null); }
+    });
+
+    // ============================================================
+    // VALIDATION
+    // The `required` attribute on each control is the single source of truth.
+    // Each message lives in the .error-message inside the same field block and
+    // is hidden by CSS until flagged here.
+    // ============================================================
+
+    // Remember each message's original text so a custom one (e.g. the date-order
+    // check, or a server response) can be reverted afterwards.
+    $('#applicationForm .error-message').each(function () {
+        $(this).attr('data-default', $(this).text());
+    });
+
+    function fieldBlock($field) {
+        return $field.closest('.mb-3');
+    }
+
+    // message: null clears, true restores the field's own text, a string overrides it
+    function setError($field, message) {
+        var $block = fieldBlock($field);
+        var $msg = $block.find('.error-message').first();
+
+        if (message === null) {
+            $msg.removeClass('show');
+            $block.find('.form-control').removeClass('is-invalid');
+            return;
+        }
+
+        $msg.text(message === true
+            ? ($msg.attr('data-default') || 'This field is required')
+            : message);
+        $msg.addClass('show');
+        $block.find('.form-control').addClass('is-invalid');
+    }
+
+    // Strict dd-mm-yyyy, and a date that actually exists: the regex alone would
+    // happily accept 31-02-2023, so the parts are checked against a real Date.
+    function isValidDMY(value) {
+        var parts = /^(\d{2})-(\d{2})-(\d{4})$/.exec(value);
+        if (!parts) { return false; }
+
+        var day   = parseInt(parts[1], 10);
+        var month = parseInt(parts[2], 10);
+        var year  = parseInt(parts[3], 10);
+
+        var candidate = new Date(year, month - 1, day);
+        return candidate.getFullYear() === year
+            && candidate.getMonth() === month - 1
+            && candidate.getDate() === day;
+    }
+
+    function isFilled($field) {
+        var el = $field[0];
+        if (el.type === 'file') { return el.files && el.files.length > 0; }
+        if (el.type === 'radio' || el.type === 'checkbox') {
+            return $('input[name="' + el.name + '"]:checked').length > 0;
+        }
+        return $.trim($field.val() || '') !== '';
+    }
+
+    function validateForm() {
+        var seenGroups = {};
+        var $firstBad = null;
+
+        $('#applicationForm [required]').each(function () {
+            var $f = $(this);
+
+            // Fields inside a hidden branch belong to the programme or scheme
+            // the applicant did NOT choose, so they are not being asked for.
+            // Checking visibility means the two programme trees can both keep
+            // their `required` attributes in the markup.
+            if (!$f.is(':visible')) { return; }
+
+            // Radio and checkbox groups carry `required` on one member only.
+            if (this.type === 'radio' || this.type === 'checkbox') {
+                if (seenGroups[this.name]) { return; }
+                seenGroups[this.name] = true;
+            }
+
+            if (isFilled($f)) {
+                setError($f, null);
+            } else {
+                setError($f, true);
+                if (!$firstBad) { $firstBad = $f; }
+            }
+        });
+
+        // A conference cannot end before it starts. Guarded on visibility so the
+        // rule does not fire for a programme the applicant is not applying to.
+        var $confStart = $('input[name="conference_start_date"]');
+        var start = $confStart.is(':visible') ? $confStart.val() : '';
+        var end   = $('input[name="conference_end_date"]').val();
+        if (start && end && end < start) {
+            var $endDate = $('input[name="conference_end_date"]');
+            setError($endDate, 'End date cannot be before the start date');
+            if (!$firstBad) { $firstBad = $endDate; }
+        }
+
+        // Acceptance cannot arrive before the submission deadline.
+        var deadline = $('input[name="paper_submission_deadline"]').val();
+        var accepted = $('input[name="acceptance_notification_date"]').val();
+        if (deadline && accepted && accepted < deadline) {
+            var $accepted = $('input[name="acceptance_notification_date"]');
+            setError($accepted, 'Acceptance date cannot be before the submission deadline');
+            if (!$firstBad) { $firstBad = $accepted; }
+        }
+
+        // RFG: an event cannot end before it starts.
+        var $evStart = $('input[name="rfg_event_start"]');
+        var $evEnd   = $('input[name="rfg_event_end"]');
+        if ($evStart.is(':visible') && $evStart.val() && $evEnd.val()
+                && $evEnd.val() < $evStart.val()) {
+            setError($evEnd, 'Event end date cannot be before the start date');
+            if (!$firstBad) { $firstBad = $evEnd; }
+        }
+
+        // Previous conference date must be a real dd-mm-yyyy date. Only checked
+        // when "Yes" is selected, which is when the field carries `required`.
+        var $prevDates = $('input[name="previous_conference_dates"]');
+        if ($prevDates.is('[required]')) {
+            var prevRaw = $.trim($prevDates.val() || '');
+            if (prevRaw && !isValidDMY(prevRaw)) {
+                setError($prevDates, 'Enter the date as dd-mm-yyyy (e.g. 15-01-2023)');
+                if (!$firstBad) { $firstBad = $prevDates; }
+            }
+        }
+
+        if ($firstBad) {
+            $('html, body').animate(
+                { scrollTop: fieldBlock($firstBad).offset().top - 100 }, 300);
+            $firstBad.trigger('focus');
+        }
+        return !$firstBad;
+    }
+
+    function clearAllErrors() {
+        $('#applicationForm .error-message').removeClass('show');
+        $('#applicationForm .form-control').removeClass('is-invalid');
+    }
+
+    // ---------- SUCCESS SCREEN ----------
+    // Swap the form out for a confirmation panel rather than re-showing the whole
+    // form with a note at the bottom.
+    function showSuccessPanel(trackingCode) {
+        $("#applicationForm")[0].reset();
+        clearAllErrors();
+        $('#previousGrantDetails').hide();
+        $('#rfgPreviousDetails').hide();
+        // reset() restores the markup default, which has no `required`
+        $('input[name="previous_conference_dates"]').prop('required', false);
+        $('input[name="rfg_previous_details"]').prop('required', false);
+        // reset() clears the selects, so collapse both programme trees too
+        applyProgram();
+        $("#errorAlert").hide();
+
+        $("#successTrackingCode").text(trackingCode);
+        $("#trackApplicationBtn").attr(
+            'href', '/application-details/' + encodeURIComponent(trackingCode) + '/');
+
+        $("#applicationForm").hide();
+        $("#successPanel").show();
+        $('html, body').animate({ scrollTop: 0 }, 300);
+    }
+
+    $("#submitAnotherBtn").on('click', function () {
+        $("#successPanel").hide();
+        $("#applicationForm").show();
+        $('html, body').animate({ scrollTop: 0 }, 300);
+    });
+
+    // Drop a field's error as soon as the user fixes it.
+    $('#applicationForm').on('input change', '.form-control, input[type="radio"]',
+        function () {
+            var $f = $(this);
+            if (this.type !== 'radio' && !$f.is('[required]')) { return; }
+            if (isFilled($f)) { setError($f, null); }
+        });
+
+    // EXISTING POST LOGIC PRESERVED
+    $("#applicationForm").submit(function(e) {
+        e.preventDefault();
+
+        if (!validateForm()) { return false; }
+
+        let formData = new FormData(this);
+        $("#submitBtn").prop("disabled", true);
+        $("#loadingSpinner").show();
+        $("#successMessage").hide();
+        $("#errorAlert").hide();
+
+        $.ajax({
+            url: "{% url 'submit_travel_grant' %}",
+            type: "POST",
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                $("#loadingSpinner").hide();
+                $("#submitBtn").prop("disabled", false);
+                if (response.status === "success") {
+                    showSuccessPanel(response.tracking_code);
+                } else {
+                    $("#errorMessage").text(response.message);
+                    $("#errorAlert").show();
+                }
+            },
+            error: function(xhr) {
+                $("#loadingSpinner").hide();
+                $("#submitBtn").prop("disabled", false);
+
+                // The server returns 400 with {errors: {field: message}} when its
+                // own validation rejects the submission; surface those inline so
+                // they look identical to the client-side checks.
+                var payload = xhr.responseJSON;
+                if (payload && payload.errors) {
+                    var $firstBad = null;
+                    $.each(payload.errors, function (name, message) {
+                        var $f = $('#applicationForm [name="' + name + '"]').first();
+                        if ($f.length) {
+                            setError($f, message);
+                            if (!$firstBad) { $firstBad = $f; }
+                        }
+                    });
+                    $("#errorMessage").text(
+                        payload.message || "Please correct the highlighted fields.");
+                    $("#errorAlert").show();
+                    if ($firstBad) {
+                        $('html, body').animate(
+                            { scrollTop: fieldBlock($firstBad).offset().top - 100 }, 300);
+                    }
+                    return;
+                }
+
+                $("#errorMessage").text("Something went wrong. Please try again.");
+                $("#errorAlert").show();
+            }
+        });
+    });
+
+});
+</script>
+
+
+</body>
+</html>

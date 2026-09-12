@@ -1,0 +1,45 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Not Found - ACM India Grants</title>
+    <link rel="stylesheet" type="text/css" href="{% static 'css/bootstrap.min.css' %}" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .card-wrap { width: 100%; max-width: 520px; padding: 20px; }
+        .msg-card {
+            background: #fff; border-radius: 12px; padding: 40px; text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,.3); border: 1px solid #e9ecef;
+        }
+        .msg-card h1 { font-size: 56px; font-weight: 700; color: #667eea; line-height: 1; }
+        .msg-card h2 { font-size: 22px; font-weight: 600; color: #2c3e50; margin: 12px 0 8px; }
+        .msg-card p { font-size: 14px; color: #6c757d; margin-bottom: 24px; }
+        .btn-home {
+            display: inline-block; padding: 12px 24px; border-radius: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff; text-decoration: none; font-weight: 600; font-size: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card-wrap">
+        <div class="msg-card">
+            <h1>404</h1>
+            <h2>{{ message|default:"Page not found" }}</h2>
+            <p>
+                The page or application you asked for does not exist.
+                If you entered a tracking code, please check it and try again.
+            </p>
+            <a href="{% url 'home' %}" class="btn-home">Back to tracking</a>
+        </div>
+    </div>
+</body>
+</html>

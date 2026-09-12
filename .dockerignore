@@ -1,0 +1,21 @@
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# secrets never go in the image; Cloud Run injects them from Secret Manager
+.env
+
+# regenerated during the build
+staticfiles/
+
+# media lives in the mounted Cloud Storage bucket, not the image
+uploads/
+Media/
+
+django_debug.log
+*.sql
+.git/
+.gitignore
