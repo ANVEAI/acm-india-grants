@@ -47,7 +47,7 @@ SPINE_NOTES = """
 
 
 REQUIRED_COMMON = {
-    "rfg_correspondence_email": "Correspondence email",
+    "rfg_correspondence_email": "Preferred email",
     "rfg_affiliation_status": "Affiliation status",
     "rfg_previous": "Previous grant answer",
     "rfg_amount": "Amount requested",
