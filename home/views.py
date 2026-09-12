@@ -886,7 +886,12 @@ def travel_grant_form(request):
         # print(data, files)  # for testing
         return render(request, "form_submitted.html")
 
-    return render(request, "travel_grant_form.html")
+    # Passed through so the size hints, the browser-side check and the server
+    # all quote the same number.
+    return render(request, "travel_grant_form.html", {
+        "max_upload_mb": settings.MAX_UPLOAD_BYTES // (1024 * 1024),
+        "max_upload_total_mb": settings.MAX_UPLOAD_TOTAL_BYTES // (1024 * 1024),
+    })
 
 
 

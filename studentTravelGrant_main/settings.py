@@ -202,6 +202,19 @@ MEDIA_URL = '/media/'
 # On Cloud Run this points at a mounted Cloud Storage bucket, so uploaded papers
 # and letters survive container restarts. Locally it stays the uploads/ folder.
 MEDIA_ROOT = os.getenv('MEDIA_ROOT', os.path.join(BASE_DIR, 'uploads'))
+
+# Upload ceiling, shared by every form so the rule is identical wherever a file
+# is accepted.
+#
+# The numbers are set by the platform, not by preference: Cloud Run rejects any
+# request over 32 MiB at the load balancer, returning an HTML 413 that never
+# reaches Django. The application therefore cannot turn that into a useful
+# message -- the browser has to stop it first. A submission can carry two files
+# (paper + acceptance letter, or acceptance letter + charges document), so the
+# per-file and total limits both sit below that hard cap with room for the form
+# fields and multipart overhead.
+MAX_UPLOAD_BYTES = int(os.getenv('MAX_UPLOAD_BYTES', 25 * 1024 * 1024))
+MAX_UPLOAD_TOTAL_BYTES = int(os.getenv('MAX_UPLOAD_TOTAL_BYTES', 30 * 1024 * 1024))
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 

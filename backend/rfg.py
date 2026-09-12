@@ -11,6 +11,8 @@ rather than being duplicated -- see SPINE_NOTES below.
 
 from datetime import datetime
 
+from django.conf import settings
+
 
 SCHEME_OPEN_ACCESS = "OPEN_ACCESS"
 SCHEME_EXTRA_PAGE = "EXTRA_PAGE"
@@ -28,8 +30,10 @@ SCHEME_LABELS = {
 # form never mentions a cap); the Chairman cannot APPROVE above it.
 RFG_APPROVAL_CAP = 60000
 
-# Google Form specifies PDF, max 1 MB, on all three RFG uploads.
-RFG_MAX_UPLOAD_BYTES = 1 * 1024 * 1024
+# The Google Form specified 1 MB, which rejected ordinary scanned letters.
+# The portal applies one ceiling across both programmes instead; see
+# settings.MAX_UPLOAD_BYTES for why that number is what it is.
+RFG_MAX_UPLOAD_BYTES = settings.MAX_UPLOAD_BYTES
 
 SPINE_NOTES = """
   conference/journal name or seminar name -> APPLICATIONS.CONFERENCE_NAME

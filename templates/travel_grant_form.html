@@ -572,14 +572,14 @@
                         <label>Upload a copy of the accepted paper (PDF format) <span class="required">*</span></label>
                         <input type="file" class="form-control" name="paper_file" accept=".pdf" required>
                         <div class="error-message">Paper file is required</div>
-                        <small class="text-muted">Max 10 MB</small>
+                        <small class="text-muted">PDF only, max {{ max_upload_mb }} MB</small>
                     </div>
 
                     <div class="col-md-6 mb-3">
                         <label>Upload the acceptance notification letter <span class="required">*</span></label>
                         <input type="file" class="form-control" name="acceptance_letter" accept=".pdf,.txt" required>
                         <div class="error-message">Acceptance letter is required</div>
-                        <small class="text-muted">Max 10 MB</small>
+                        <small class="text-muted">PDF only, max {{ max_upload_mb }} MB</small>
                     </div>
 
                 </div>
@@ -776,14 +776,14 @@
                         <label>Upload PDF of acceptance letter <span class="required">*</span></label>
                         <input type="file" class="form-control" name="rfg_acceptance_letter" accept="application/pdf" required>
                         <div class="error-message">Acceptance letter is required</div>
-                        <small class="text-muted">PDF only, max 1 MB</small>
+                        <small class="text-muted">PDF only, max {{ max_upload_mb }} MB</small>
                     </div>
 
                     <div class="col-md-6 mb-3">
                         <label>Upload PDF showing open access / extra page charges <span class="required">*</span></label>
                         <input type="file" class="form-control" name="rfg_charges_doc" accept="application/pdf" required>
                         <div class="error-message">Charges document is required</div>
-                        <small class="text-muted">PDF only, max 1 MB</small>
+                        <small class="text-muted">PDF only, max {{ max_upload_mb }} MB</small>
                     </div>
 
                 </div>
@@ -812,7 +812,7 @@
                         <label>Upload PDF of invitation letter <span class="required">*</span></label>
                         <input type="file" class="form-control" name="rfg_invitation_letter" accept="application/pdf" required>
                         <div class="error-message">Invitation letter is required</div>
-                        <small class="text-muted">Must show the event is invitation-only. PDF only, max 1 MB</small>
+                        <small class="text-muted">Must show the event is invitation-only. PDF only, max {{ max_upload_mb }} MB</small>
                     </div>
 
                     <div class="col-md-6 mb-3">
@@ -1082,6 +1082,65 @@ $(document).ready(function() {
         return $.trim($field.val() || '') !== '';
     }
 
+    // ---------- UPLOAD SIZE ----------
+    // Enforced here and not only on the server, because an oversized request
+    // never reaches the server: Cloud Run refuses anything over 32 MiB at the
+    // load balancer and answers with HTML, which the AJAX handler below cannot
+    // turn into a field message. Stopping it in the browser also means the
+    // applicant is told immediately instead of after a long pointless upload.
+    var MAX_UPLOAD_MB = {{ max_upload_mb }};
+    var MAX_TOTAL_MB = {{ max_upload_total_mb }};
+
+    function humanMB(bytes) {
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function oversizeMessage(file) {
+        return 'This file is ' + humanMB(file.size) + '. Maximum is '
+               + MAX_UPLOAD_MB + ' MB.';
+    }
+
+    // Immediate feedback on choosing a file, so the problem surfaces at the
+    // point of selection rather than at submit.
+    $('#applicationForm').on('change', 'input[type="file"]', function () {
+        var file = this.files && this.files[0];
+        setError($(this),
+                 file && file.size > MAX_UPLOAD_MB * 1024 * 1024
+                     ? oversizeMessage(file) : null);
+    });
+
+    function validateFileSizes() {
+        var $firstBad = null;
+        var total = 0;
+        var $withFiles = $();
+
+        $('#applicationForm input[type="file"]').each(function () {
+            var $f = $(this);
+            // Hidden inputs belong to the programme or scheme not chosen.
+            if (!$f.is(':visible')) { return; }
+            var file = this.files && this.files[0];
+            if (!file) { return; }
+
+            total += file.size;
+            $withFiles = $withFiles.add($f);
+            if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+                setError($f, oversizeMessage(file));
+                if (!$firstBad) { $firstBad = $f; }
+            }
+        });
+
+        // Each file can be within the limit while the submission as a whole is
+        // not -- both forms can carry two documents at once.
+        if (!$firstBad && $withFiles.length && total > MAX_TOTAL_MB * 1024 * 1024) {
+            var $last = $withFiles.last();
+            setError($last, 'Your files come to ' + humanMB(total)
+                            + ' together. The total must be ' + MAX_TOTAL_MB
+                            + ' MB or less.');
+            $firstBad = $last;
+        }
+        return $firstBad;
+    }
+
     function validateForm() {
         var seenGroups = {};
         var $firstBad = null;
@@ -1148,6 +1207,9 @@ $(document).ready(function() {
                 if (!$firstBad) { $firstBad = $prevDates; }
             }
         }
+
+        var $badFile = validateFileSizes();
+        if ($badFile && !$firstBad) { $firstBad = $badFile; }
 
         if ($firstBad) {
             $('html, body').animate(
@@ -1236,7 +1298,7 @@ $(document).ready(function() {
                 // own validation rejects the submission; surface those inline so
                 // they look identical to the client-side checks.
                 var payload = xhr.responseJSON;
-                if (payload && payload.errors) {
+                if (payload && (payload.errors || payload.message)) {
                     var $firstBad = null;
                     $.each(payload.errors, function (name, message) {
                         var $f = $('#applicationForm [name="' + name + '"]').first();
@@ -1255,7 +1317,24 @@ $(document).ready(function() {
                     return;
                 }
 
-                $("#errorMessage").text("Something went wrong. Please try again.");
+                // 413 is Cloud Run refusing the request before Django sees it,
+                // so there is no JSON to read. Name the real cause rather than
+                // falling through to a message that explains nothing.
+                if (xhr.status === 413) {
+                    $("#errorMessage").text(
+                        'Those files are too large to send together. Each file must be '
+                        + MAX_UPLOAD_MB + ' MB or smaller, and ' + MAX_TOTAL_MB
+                        + ' MB in total.');
+                } else if (xhr.status === 0) {
+                    $("#errorMessage").text(
+                        'The upload was interrupted before it finished. Check your '
+                        + 'connection and try again.');
+                } else {
+                    $("#errorMessage").text(
+                        'Something went wrong while submitting (error ' + xhr.status
+                        + '). Please try again, or contact the grant committee if it '
+                        + 'keeps happening.');
+                }
                 $("#errorAlert").show();
             }
         });

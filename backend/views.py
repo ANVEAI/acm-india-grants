@@ -312,7 +312,7 @@ def allowed_file(filename):
 # Uploads were previously unvalidated on a public endpoint: any file type, any
 # size. Travel keeps the 10 MB its form has always advertised; RFG uses the 1 MB
 # its own form specifies.
-TRAVEL_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+TRAVEL_MAX_UPLOAD_BYTES = settings.MAX_UPLOAD_BYTES
 
 
 def send_submission_email(subject, message, recipient_list, context=""):
@@ -379,7 +379,10 @@ def validate_upload(uploaded, label, max_bytes, errors, field):
         return
 
     if uploaded.size and uploaded.size > max_bytes:
-        errors[field] = f"{label} must be {max_bytes // (1024 * 1024)} MB or smaller"
+        errors[field] = (
+            f"{label} is {uploaded.size / (1024 * 1024):.1f} MB. "
+            f"Maximum is {max_bytes // (1024 * 1024)} MB."
+        )
 
 import uuid
 from datetime import datetime
@@ -427,6 +430,22 @@ def submit_travel_grant(request):
 
         data = request.POST
         files = request.FILES
+
+        # Applies to both programmes. Only a narrow band reaches here -- beyond
+        # 32 MiB Cloud Run has already refused the request -- but a client that
+        # skips the browser check should still get JSON it can render, not HTML.
+        total_bytes = sum((f.size or 0) for f in files.values())
+        if total_bytes > settings.MAX_UPLOAD_TOTAL_BYTES:
+            return JsonResponse({
+                "status": "error",
+                "message": (
+                    "Your files come to %.1f MB together. "
+                    "The total must be %d MB or less."
+                    % (total_bytes / (1024 * 1024),
+                       settings.MAX_UPLOAD_TOTAL_BYTES // (1024 * 1024))
+                ),
+                "errors": {},
+            }, status=400)
 
         # ==================================================================
         # RESEARCH FACILITATION GRANT
