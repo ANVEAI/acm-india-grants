@@ -143,6 +143,11 @@ def is_system_reviewer(request):
     return request.session.get("user_role") == SYSTEM_REVIEWER
 
 
+def can_manage_acm_budget(request):
+    """The ACM-wide allocation is managed only by the System Reviewer."""
+    return is_system_reviewer(request)
+
+
 # ---------------------------------------------------------------------------
 # Capabilities
 # ---------------------------------------------------------------------------
@@ -160,6 +165,24 @@ def can_review(request, program):
     Reviewers hold none, so both are denied.
     """
     return role_for(request, program) in (ROLE_CHAIRMAN, ROLE_REVIEWER)
+
+
+def can_edit_budget(request, program):
+    """Edit applicant-supplied budget fields for this programme."""
+    if is_system_reviewer(request):
+        return False
+    return role_for(request, program) in (ROLE_CHAIRMAN, ROLE_REVIEWER)
+
+
+def can_access_help(request):
+    """Whether the user is a Chairman or Reviewer in either programme."""
+    if is_system_reviewer(request):
+        return False
+
+    return any(
+        role in (ROLE_CHAIRMAN, ROLE_REVIEWER)
+        for role in program_roles(request).values()
+    )
 
 
 def can_decide(request, program):

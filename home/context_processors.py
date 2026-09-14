@@ -2,13 +2,18 @@
 import os
 from django.conf import settings
 from django.db import connection
+from home import permissions
 
 def user_profile(request):
     """Inject user's profile image and name into all templates"""
     profile_image_url = None
     user_name = None
+    can_access_help = False
+    can_manage_acm_budget = False
 
     if request.user.is_authenticated:
+        can_access_help = permissions.can_access_help(request)
+        can_manage_acm_budget = permissions.can_manage_acm_budget(request)
         email = request.user.email
         with connection.cursor() as cursor:
             cursor.execute("""
@@ -32,4 +37,6 @@ def user_profile(request):
     return {
         'global_profile_image_url': profile_image_url,
         'global_user_name': user_name,
+        'can_access_help': can_access_help,
+        'can_manage_acm_budget': can_manage_acm_budget,
     }

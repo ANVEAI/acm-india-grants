@@ -400,11 +400,18 @@
 
             <!-- Budget Information -->
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header py-3"
+                <div class="card-header py-3 d-flex align-items-center justify-content-between"
                      style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff;">
                     <h5 class="mb-0 fw-bold">
                         <i class="feather-dollar-sign me-2" style="color: #ffffff;"></i>Budget Details
                     </h5>
+                    {% if can_edit_budget %}
+                    <button type="button" class="btn btn-sm btn-light"
+                            data-bs-toggle="collapse" data-bs-target="#budgetEditForm"
+                            aria-expanded="false" aria-controls="budgetEditForm">
+                        <i class="feather-edit-2 me-1"></i>Edit
+                    </button>
+                    {% endif %}
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -420,15 +427,15 @@
                             <label class="text-muted small fw-bold d-block mb-1">Budget Justification</label>
                             <p class="fw-500 text-dark" style="line-height: 1.6;">{{ application.budget_justification }}</p>
                         </div>
+                        {% if approved_amount %}
                         <div class="col-md-6 mb-3">
-                            <label class="text-muted small fw-bold d-block mb-1">Travel Budget</label>
+                            <label class="text-muted small fw-bold d-block mb-1">Approved Amount</label>
                             <p class="fw-500 text-dark fs-5">
-                                ₹{{ approved_amount|default:application.travel_budget }}
-                                {% if approved_amount %}
-                                    <span class="text-success small">(Approved)</span>
-                                {% endif %}
+                                ₹{{ approved_amount }}
+                                <span class="text-success small">(Approved)</span>
                             </p>
                         </div>
+                        {% endif %}
                         <div class="col-md-6 mb-3">
                             <label class="text-muted small fw-bold d-block mb-1">Availed an IARCS-ACMI Grant Before?</label>
                             <p class="fw-500 text-dark">
@@ -450,6 +457,47 @@
                         </div>
                         {% endif %}
                     </div>
+
+                    {% if application.budget_edited_at and application.budget_edited_by %}
+                    <div class="border-top pt-3 mt-1 d-flex align-items-center gap-2 text-muted small">
+                        <i class="feather-clock"></i>
+                        <span>
+                            Last edited by <strong class="text-dark">{{ application.budget_edited_by }}</strong>
+                            on {{ application.budget_edited_at }}.
+                        </span>
+                    </div>
+                    {% endif %}
+
+                    {% if can_edit_budget %}
+                    <div class="collapse" id="budgetEditForm">
+                        <hr class="my-2 mb-4">
+                        <form method="POST" action="{% url 'update_budget_details' application.id %}">
+                            {% csrf_token %}
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="travelBudget" class="form-label fw-bold">Travel Budget (₹)</label>
+                                    <input id="travelBudget" type="number" name="travel_budget"
+                                           class="form-control" min="0.01" max="99999999.99" step="0.01"
+                                           value="{{ application.travel_budget }}" required>
+                                </div>
+                                <div class="col-12 mb-3">
+                                    <label for="budgetJustification" class="form-label fw-bold">Budget Justification</label>
+                                    <textarea id="budgetJustification" name="budget_justification"
+                                              class="form-control" rows="3" required>{{ application.budget_justification }}</textarea>
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-end gap-2">
+                                <button type="button" class="btn btn-outline-secondary"
+                                        data-bs-toggle="collapse" data-bs-target="#budgetEditForm">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="feather-save me-1"></i>Save Changes
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
 

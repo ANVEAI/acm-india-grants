@@ -79,8 +79,8 @@ DB_PORT=5432
 MEDIA_ROOT=/mnt/media
 ALLOWED_HOSTS=*
 LOG_LEVEL=INFO
-EMAIL_HOST_USER=wlone6156@gmail.com
-DEFAULT_FROM_EMAIL=wlone6156@gmail.com
+EMAIL_HOST_USER=acmtravelgrant@gmail.com
+DEFAULT_FROM_EMAIL=acmtravelgrant@gmail.com
 ```
 
 Secrets (`--set-secrets`, pulled from Secret Manager at container start):

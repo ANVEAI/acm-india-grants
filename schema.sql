@@ -55,6 +55,8 @@ CREATE TABLE public."APPLICATIONS" (
     "TRACKING_CODE" character varying(32) DEFAULT upper("substring"(md5((random())::text), 1, 8)) NOT NULL,
     "CREATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     "UPDATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    "BUDGET_EDITED_AT" timestamp without time zone,
+    "BUDGET_EDITED_BY" character varying(255),
     "EMAIL" character varying(255) NOT NULL,
     "APPLICANT_NAME" character varying(255) NOT NULL,
     "INSTITUTION_NAME" character varying(255) NOT NULL,
@@ -175,6 +177,24 @@ CREATE TABLE public."USER_PROGRAM_ROLES" (
 );
 
 ALTER TABLE public."USER_PROGRAM_ROLES" OWNER TO postgres;
+
+--
+-- Name: ACM_BUDGET; Type: TABLE; Schema: public; Owner: postgres
+-- Stores the single ACM-wide allocation. Programme balances are derived from
+-- accepted FINAL_APPROVALS, so they cannot drift from application state.
+--
+
+CREATE TABLE public."ACM_BUDGET" (
+    "ID" smallint DEFAULT 1 NOT NULL,
+    "TOTAL_BUDGET" numeric(15,2) NOT NULL,
+    "UPDATED_BY" character varying(255) NOT NULL,
+    "UPDATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT "ACM_BUDGET_single_row_chk" CHECK ("ID" = 1),
+    CONSTRAINT "ACM_BUDGET_total_nonnegative_chk" CHECK ("TOTAL_BUDGET" >= 0),
+    CONSTRAINT "ACM_BUDGET_pkey" PRIMARY KEY ("ID")
+);
+
+ALTER TABLE public."ACM_BUDGET" OWNER TO postgres;
 
 --
 -- TOC entry 222 (class 1259 OID 21054)
@@ -1344,3 +1364,21 @@ CREATE INDEX IF NOT EXISTS "IDX_USER_PROGRAM_ROLES_USER_ID"
     ON public."USER_PROGRAM_ROLES" USING btree ("USER_ID");
 CREATE INDEX IF NOT EXISTS "IDX_RFG_DETAILS_APPLICATION_ID"
     ON public."RFG_DETAILS" USING btree ("APPLICATION_ID");
+
+-- Persistent attribution for Chairman/Reviewer edits to Budget Details.
+-- Nullable and re-runnable so existing application rows remain valid.
+ALTER TABLE public."APPLICATIONS"
+    ADD COLUMN IF NOT EXISTS "BUDGET_EDITED_AT" timestamp without time zone;
+ALTER TABLE public."APPLICATIONS"
+    ADD COLUMN IF NOT EXISTS "BUDGET_EDITED_BY" character varying(255);
+
+-- System Reviewer-managed ACM allocation. Re-runnable for existing databases.
+CREATE TABLE IF NOT EXISTS public."ACM_BUDGET" (
+    "ID" smallint DEFAULT 1 NOT NULL,
+    "TOTAL_BUDGET" numeric(15,2) NOT NULL,
+    "UPDATED_BY" character varying(255) NOT NULL,
+    "UPDATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT "ACM_BUDGET_single_row_chk" CHECK ("ID" = 1),
+    CONSTRAINT "ACM_BUDGET_total_nonnegative_chk" CHECK ("TOTAL_BUDGET" >= 0),
+    CONSTRAINT "ACM_BUDGET_pkey" PRIMARY KEY ("ID")
+);

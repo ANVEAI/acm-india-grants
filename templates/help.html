@@ -1,0 +1,160 @@
+{% extends "common/base_layout.html" %}
+
+{% block title %}Help - ACM India Grants{% endblock %}
+
+{% block extra_css %}
+<style>
+    .help-page {
+        max-width: 980px;
+        padding-top: 3rem;
+        padding-bottom: 3rem;
+    }
+
+    .help-heading {
+        margin-bottom: 1.75rem;
+    }
+
+    .help-heading h1 {
+        margin-bottom: 0.5rem;
+        color: #252f40;
+        font-size: 1.75rem;
+        font-weight: 700;
+    }
+
+    .help-heading p {
+        max-width: 640px;
+        margin: 0;
+        color: #6c757d;
+        font-size: 0.95rem;
+        line-height: 1.7;
+    }
+
+    .support-card {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 2rem;
+        min-height: 180px;
+        padding: 2rem 2.25rem;
+        overflow: hidden;
+        background: #fff;
+        border: 1px solid #e8eaf0;
+        border-radius: 10px;
+        box-shadow: 0 4px 14px rgba(31, 38, 68, 0.05);
+    }
+
+    .support-card::before {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 5px;
+        content: "";
+        background: #667eea;
+    }
+
+    .support-copy {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .support-icon {
+        display: grid;
+        width: 52px;
+        height: 52px;
+        flex: 0 0 52px;
+        place-items: center;
+        color: #667eea;
+        background: #eef0ff;
+        border-radius: 10px;
+    }
+
+    .support-icon i {
+        width: 23px;
+        height: 23px;
+    }
+
+    .support-label {
+        margin-bottom: 0.35rem;
+        color: #6c757d;
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .support-copy h2 {
+        margin: 0;
+        color: #252f40;
+        font-size: 1.15rem;
+        font-weight: 650;
+    }
+
+    .support-email {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.8rem 1.1rem;
+        color: #fff;
+        background: #667eea;
+        border-radius: 7px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: background-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .support-email:hover {
+        color: #fff;
+        background: #586bd6;
+        transform: translateY(-1px);
+    }
+
+    @media (max-width: 767.98px) {
+        .help-page {
+            padding-top: 2rem;
+        }
+
+        .support-card {
+            align-items: flex-start;
+            flex-direction: column;
+            padding: 1.5rem;
+        }
+
+        .support-email {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid help-page">
+    <div class="help-heading">
+        <h1>Help</h1>
+        <p>
+            If you run into an issue while reviewing or managing an application,
+            contact the support team and describe the problem you are facing.
+        </p>
+    </div>
+
+    <section class="support-card" aria-labelledby="support-contact-title">
+        <div class="support-copy">
+            <span class="support-icon" aria-hidden="true">
+                <i class="feather-mail"></i>
+            </span>
+            <div>
+                <div class="support-label">Support contact</div>
+                <h2 id="support-contact-title">ACM India Grants support</h2>
+            </div>
+        </div>
+
+        <a class="support-email" href="mailto:karkare@gmail.com">
+            <i class="feather-send"></i>
+            karkare@gmail.com
+        </a>
+    </section>
+</div>
+{% endblock %}

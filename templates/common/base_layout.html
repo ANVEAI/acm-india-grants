@@ -147,6 +147,22 @@
                             <span class="nxl-mtext">Track</span>
                         </a>
                     </li>
+                    {% if can_manage_acm_budget %}
+                    <li class="nxl-item">
+                        <a href="{% url 'budget_management' %}" class="nxl-link">
+                            <span class="nxl-micon"><i class="feather-pie-chart"></i></span>
+                            <span class="nxl-mtext">Budget Management</span>
+                        </a>
+                    </li>
+                    {% endif %}
+                    {% if can_access_help %}
+                    <li class="nxl-item">
+                        <a href="{% url 'help' %}" class="nxl-link">
+                            <span class="nxl-micon"><i class="feather-help-circle"></i></span>
+                            <span class="nxl-mtext">Help</span>
+                        </a>
+                    </li>
+                    {% endif %}
                 </ul>
             </div>
         </div>

@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.db import connection
+from django.db import connection, transaction
 from django.http import FileResponse, Http404
 import os
 from django.contrib.auth import login as auth_login
@@ -17,10 +17,10 @@ from django.contrib import messages
 from django.db import connection
 from datetime import date
 import json
-from django.http import FileResponse, HttpResponseNotFound, HttpResponse, Http404
+from django.http import FileResponse, HttpResponseNotFound, HttpResponse, Http404, HttpResponseForbidden
 from django.utils.safestring import mark_safe
 from datetime import date, datetime
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
 from datetime import datetime, timedelta
 from django.utils import timezone
 from uuid import UUID
@@ -29,7 +29,7 @@ from datetime import timezone as dt_timezone
 from zoneinfo import ZoneInfo
 from django.core.mail import send_mail
 
-from home import permissions
+from home import permissions, budget as acm_budget
 from backend import rfg
 
 
@@ -142,6 +142,77 @@ def logout_view(request):
     print("INFO: User logged out successfully.")
 
     return redirect('login')  # Redirect to the login page or any other page
+
+
+@custom_login_required
+def help_page(request):
+    if not permissions.can_access_help(request):
+        return HttpResponseForbidden("You do not have permission to access this page.")
+    return render(request, 'help.html')
+
+
+@custom_login_required
+def budget_management(request):
+    if not permissions.can_manage_acm_budget(request):
+        return HttpResponseForbidden("You do not have permission to manage the ACM budget.")
+
+    if request.method == "POST":
+        total_raw = request.POST.get("total_budget", "").strip()
+        try:
+            total = Decimal(total_raw)
+            if not total.is_finite():
+                raise ValueError
+        except (ArithmeticError, ValueError):
+            messages.error(request, "Enter a valid total ACM budget.")
+            return redirect("budget_management")
+
+        if total <= 0:
+            messages.error(request, "Total ACM budget must be greater than zero.")
+            return redirect("budget_management")
+        if total > Decimal("9999999999999"):
+            messages.error(request, "The total ACM budget exceeds the supported limit.")
+            return redirect("budget_management")
+        if total != total.to_integral_value():
+            messages.error(request, "Enter the total ACM budget in whole rupees.")
+            return redirect("budget_management")
+
+        editor_name = (
+            request.session.get("user_name")
+            or request.session.get("user_email")
+            or "System Reviewer"
+        )[:255]
+
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                acm_budget.lock_ledger(cursor)
+                if not acm_budget.table_exists(cursor):
+                    return render(
+                        request,
+                        "budget_management.html",
+                        {"budget": {"schema_ready": False, "configured": False}},
+                        status=503)
+
+                minimum_total = acm_budget.minimum_total_for_current_approvals(cursor)
+                if total < minimum_total:
+                    messages.error(
+                        request,
+                        "The total cannot be reduced below %s because of existing approved grants."
+                        % acm_budget.format_money(minimum_total))
+                    return redirect("budget_management")
+
+                acm_budget.save_total(cursor, total, editor_name, timezone.now())
+
+        messages.success(request, "The ACM budget was updated successfully.")
+        return redirect("budget_management")
+
+    with connection.cursor() as cursor:
+        budget_summary = acm_budget.summary(cursor)
+    if budget_summary.get("updated_at"):
+        budget_summary["updated_at"] = _as_utc_aware(budget_summary["updated_at"])
+
+    return render(request, "budget_management.html", {"budget": budget_summary})
+
+
 # Create your views here.
 
 
@@ -408,7 +479,10 @@ def application_details(request, app_id):
 
         colnames = [desc[0].lower() for desc in cursor.description]
         application = dict(zip(colnames, row))
-        _localise_row(application, 'created_at', 'updated_at', 'reviewed_at', 'notified_at')
+        _localise_row(
+            application,
+            'created_at', 'updated_at', 'reviewed_at', 'notified_at',
+            'budget_edited_at')
 
         # RFG-specific fields live in a child row; Travel applications have none.
         rfg_detail = None
@@ -485,12 +559,109 @@ def application_details(request, app_id):
         "rfg_cap": rfg.RFG_APPROVAL_CAP,
         "is_observer": permissions.is_observer(request, program),
         "can_review": permissions.can_review(request, program),
+        "can_edit_budget": permissions.can_edit_budget(request, program),
         "can_decide": permissions.can_decide(request, program),
         "can_notify": permissions.can_notify(request, program,
                                              application.get("status"),
                                              application.get("notified_status")),
     })
 
+
+
+@custom_login_required
+@require_POST
+def update_budget_details(request, app_id):
+    """Update only the applicant-supplied fields shown in Budget Details."""
+    program = _program_of(app_id)
+    if program is None:
+        return render(request, "404.html", {"message": "Application not found"}, status=404)
+
+    if not permissions.can_edit_budget(request, program):
+        return HttpResponseForbidden("You do not have permission to edit budget details.")
+
+    travel_budget_raw = request.POST.get("travel_budget", "").strip()
+    budget_justification = request.POST.get("budget_justification", "").strip()
+
+    try:
+        travel_budget = Decimal(travel_budget_raw)
+        if not travel_budget.is_finite():
+            raise ValueError
+    except (ArithmeticError, ValueError):
+        messages.error(request, "Travel budget must be a valid amount.")
+        return redirect("application_details", app_id=app_id)
+
+    if travel_budget <= 0 or travel_budget > Decimal("99999999.99"):
+        messages.error(request, "Travel budget must be greater than zero and within the supported limit.")
+        return redirect("application_details", app_id=app_id)
+    if travel_budget.normalize().as_tuple().exponent < -2:
+        messages.error(request, "Travel budget can have at most two decimal places.")
+        return redirect("application_details", app_id=app_id)
+
+    if not budget_justification:
+        messages.error(request, "Budget justification is required.")
+        return redirect("application_details", app_id=app_id)
+
+    editor_name = (
+        request.session.get("user_name")
+        or request.session.get("user_email")
+        or "Unknown user"
+    )
+    editor_role = permissions.role_for(request, program)
+    editor_label = f"{editor_name} ({editor_role})"[:255]
+
+    edited_at = timezone.now()
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            acm_budget.lock_ledger(cursor)
+            cursor.execute(
+                'SELECT "STATUS" FROM "APPLICATIONS" WHERE "ID" = %s FOR UPDATE',
+                [app_id])
+            status = cursor.fetchone()[0]
+
+            if status == "Accepted":
+                total_budget = acm_budget.load_total(cursor, for_update=True)
+                if total_budget is not None:
+                    available = acm_budget.available_for(
+                        cursor,
+                        total_budget,
+                        program,
+                        exclude_application_id=app_id)
+                    if travel_budget > available:
+                        messages.error(
+                            request,
+                            "Travel budget cannot exceed the available %s budget of %s."
+                            % (
+                                permissions.PROGRAM_LABELS.get(program, program),
+                                acm_budget.format_money(max(available, Decimal("0"))),
+                            ))
+                        return redirect("application_details", app_id=app_id)
+
+            cursor.execute("""
+                UPDATE "APPLICATIONS"
+                SET "TRAVEL_BUDGET" = %s,
+                    "BUDGET_JUSTIFICATION" = %s,
+                    "BUDGET_EDITED_BY" = %s,
+                    "BUDGET_EDITED_AT" = %s,
+                    "UPDATED_AT" = %s
+                WHERE "ID" = %s
+            """, [
+                travel_budget,
+                budget_justification,
+                editor_label,
+                edited_at,
+                edited_at,
+                app_id,
+            ])
+
+            if status == "Accepted":
+                cursor.execute("""
+                    UPDATE "FINAL_APPROVALS"
+                    SET "APPROVED_AMOUNT" = %s
+                    WHERE "APPLICATION_ID" = %s
+                """, [travel_budget, app_id])
+
+    messages.success(request, "Budget details updated successfully.")
+    return redirect("application_details", app_id=app_id)
 
 
 @csrf_exempt
@@ -593,7 +764,22 @@ def submit_final_approval(request, app_id):
                             status=403)
     
     try:
-        with connection.cursor() as cursor:
+        with transaction.atomic(), connection.cursor() as cursor:
+            acm_budget.lock_ledger(cursor)
+
+            cursor.execute(
+                'SELECT "STATUS" FROM "APPLICATIONS" WHERE "ID" = %s FOR UPDATE',
+                [app_id])
+            status_row = cursor.fetchone()
+            if not status_row:
+                return JsonResponse({"error": "Application not found"}, status=404)
+            if status_row[0] == "Accepted":
+                messages.info(request, "This application has already been accepted.")
+                return redirect('application_details', app_id=app_id)
+            if status_row[0] == "Rejected":
+                messages.error(request, "A rejected application cannot be approved.")
+                return redirect('application_details', app_id=app_id)
+
             # Ensure at least one review exists
             cursor.execute("""
                 SELECT COUNT(*) FROM "REVIEWS" WHERE "APPLICATION_ID" = %s
@@ -611,25 +797,51 @@ def submit_final_approval(request, app_id):
                 return JsonResponse({"error": "Amount is required"}, status=400)
 
             try:
-                amount_value = float(amount)
-            except (TypeError, ValueError):
+                amount_value = Decimal(amount)
+                if not amount_value.is_finite():
+                    raise ValueError
+            except (ArithmeticError, TypeError, ValueError):
                 messages.error(request, "Approved amount must be a number.")
                 return redirect('application_details', app_id=app_id)
 
             if amount_value <= 0:
                 messages.error(request, "Approved amount must be greater than zero.")
                 return redirect('application_details', app_id=app_id)
+            if amount_value > Decimal("9999999999999.99"):
+                messages.error(request, "Approved amount exceeds the supported limit.")
+                return redirect('application_details', app_id=app_id)
+            if amount_value.normalize().as_tuple().exponent < -2:
+                messages.error(request, "Approved amount can have at most two decimal places.")
+                return redirect('application_details', app_id=app_id)
 
             # RFG is capped. Applicants may request more (the applicant-facing
             # form never states a cap), but approval cannot exceed it. Enforced
             # here rather than only in the template, because this endpoint is
             # csrf_exempt and reachable directly.
-            if program == permissions.PROGRAM_RFG and amount_value > rfg.RFG_APPROVAL_CAP:
+            if (program == permissions.PROGRAM_RFG
+                    and amount_value > Decimal(str(rfg.RFG_APPROVAL_CAP))):
                 messages.error(
                     request,
                     "Research Facilitation Grant approvals cannot exceed Rs. %s."
                     % f"{rfg.RFG_APPROVAL_CAP:,}")
                 return redirect('application_details', app_id=app_id)
+
+            total_budget = acm_budget.load_total(cursor, for_update=True)
+            if total_budget is not None:
+                available = acm_budget.available_for(
+                    cursor,
+                    total_budget,
+                    program,
+                    exclude_application_id=app_id)
+                if amount_value > available:
+                    messages.error(
+                        request,
+                        "This approval exceeds the available %s budget of %s."
+                        % (
+                            permissions.PROGRAM_LABELS.get(program, program),
+                            acm_budget.format_money(max(available, Decimal("0"))),
+                        ))
+                    return redirect('application_details', app_id=app_id)
 
             # Insert approval
             cursor.execute("""
@@ -637,7 +849,7 @@ def submit_final_approval(request, app_id):
                 ("APPLICATION_ID", "CHAIRMAN_ID", "APPROVED_AMOUNT", "FEEDBACK")
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT DO NOTHING;
-            """, [app_id, user_id, amount, feedback])
+            """, [app_id, user_id, amount_value, feedback])
             
             # Update status
             cursor.execute("""
