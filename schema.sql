@@ -1273,3 +1273,74 @@ ALTER TABLE ONLY public.django_admin_log
 -- PostgreSQL database dump complete
 --
 
+
+--
+-- RFG-era objects that never reached this file.
+--
+-- USER_PROGRAM_ROLES and RFG_DETAILS were added by a migration applied directly
+-- to Cloud SQL. Their CREATE TABLE and CHECK constraints were mirrored into the
+-- schema of record, but their primary keys, unique constraints, foreign keys,
+-- identity sequences and indexes were not. A database built from this file alone
+-- was missing all of them, which silently breaks:
+--   - programme-role assignment in the admin UI, because set_program_role uses
+--     ON CONFLICT ("USER_ID","PROGRAM") and that needs the unique constraint;
+--   - any insert into either table, because "ID" had no sequence default;
+--   - cascade deletes from APPLICATIONS and USERS.
+--
+-- Reconstructed from the live database and verified against it. Written to be
+-- safely re-runnable, so a database already built from the incomplete file can
+-- be repaired by applying just this section.
+--
+
+CREATE SEQUENCE IF NOT EXISTS public."USER_PROGRAM_ROLES_ID_seq"
+    AS bigint START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+ALTER SEQUENCE public."USER_PROGRAM_ROLES_ID_seq"
+    OWNED BY public."USER_PROGRAM_ROLES"."ID";
+ALTER TABLE ONLY public."USER_PROGRAM_ROLES"
+    ALTER COLUMN "ID" SET DEFAULT nextval('public."USER_PROGRAM_ROLES_ID_seq"'::regclass);
+
+CREATE SEQUENCE IF NOT EXISTS public."RFG_DETAILS_ID_seq"
+    AS bigint START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+ALTER SEQUENCE public."RFG_DETAILS_ID_seq"
+    OWNED BY public."RFG_DETAILS"."ID";
+ALTER TABLE ONLY public."RFG_DETAILS"
+    ALTER COLUMN "ID" SET DEFAULT nextval('public."RFG_DETAILS_ID_seq"'::regclass);
+
+DO $rfg$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'USER_PROGRAM_ROLES_pkey') THEN
+        ALTER TABLE ONLY public."USER_PROGRAM_ROLES"
+            ADD CONSTRAINT "USER_PROGRAM_ROLES_pkey" PRIMARY KEY ("ID");
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'USER_PROGRAM_ROLES_user_program_key') THEN
+        ALTER TABLE ONLY public."USER_PROGRAM_ROLES"
+            ADD CONSTRAINT "USER_PROGRAM_ROLES_user_program_key" UNIQUE ("USER_ID", "PROGRAM");
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'USER_PROGRAM_ROLES_USER_ID_fkey') THEN
+        ALTER TABLE ONLY public."USER_PROGRAM_ROLES"
+            ADD CONSTRAINT "USER_PROGRAM_ROLES_USER_ID_fkey"
+            FOREIGN KEY ("USER_ID") REFERENCES public."USERS"("ID") ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RFG_DETAILS_pkey') THEN
+        ALTER TABLE ONLY public."RFG_DETAILS"
+            ADD CONSTRAINT "RFG_DETAILS_pkey" PRIMARY KEY ("ID");
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RFG_DETAILS_APPLICATION_ID_key') THEN
+        ALTER TABLE ONLY public."RFG_DETAILS"
+            ADD CONSTRAINT "RFG_DETAILS_APPLICATION_ID_key" UNIQUE ("APPLICATION_ID");
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RFG_DETAILS_APPLICATION_ID_fkey') THEN
+        ALTER TABLE ONLY public."RFG_DETAILS"
+            ADD CONSTRAINT "RFG_DETAILS_APPLICATION_ID_fkey"
+            FOREIGN KEY ("APPLICATION_ID") REFERENCES public."APPLICATIONS"("ID") ON DELETE CASCADE;
+    END IF;
+END
+$rfg$;
+
+CREATE INDEX IF NOT EXISTS "IDX_APPLICATIONS_PROGRAM"
+    ON public."APPLICATIONS" USING btree ("PROGRAM");
+CREATE INDEX IF NOT EXISTS "IDX_USER_PROGRAM_ROLES_USER_ID"
+    ON public."USER_PROGRAM_ROLES" USING btree ("USER_ID");
+CREATE INDEX IF NOT EXISTS "IDX_RFG_DETAILS_APPLICATION_ID"
+    ON public."RFG_DETAILS" USING btree ("APPLICATION_ID");

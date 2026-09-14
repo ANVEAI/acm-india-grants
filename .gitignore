@@ -36,8 +36,10 @@ staticfiles/
 # exists to commit in its place.
 # ---------------------------------------------------------------------------
 *.sql
-# ...except the schema-only export, which is safe to version.
+# ...except the schema-only export and the local seed, both of which are
+# safe to version: the seed creates only .invalid accounts for local use.
 !schema.sql
+!seed_local.sql
 
 # ---------------------------------------------------------------------------
 # Logs
