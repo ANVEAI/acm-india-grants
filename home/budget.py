@@ -1,4 +1,4 @@
-"""ACM budget calculations derived from accepted application approvals."""
+"""Programme budget calculations derived from accepted application approvals."""
 
 from decimal import Decimal
 
@@ -8,7 +8,7 @@ PROGRAM_TRAVEL = "TRAVEL"
 PROGRAM_RFG = "RFG"
 PROGRAMS = (PROGRAM_TRAVEL, PROGRAM_RFG)
 
-# Serializes total-budget updates, approvals, and edits to accepted amounts.
+# Serializes programme-budget updates, approvals, and edits to accepted amounts.
 _LOCK_ID = 2_026_091_401
 
 
@@ -17,18 +17,18 @@ def lock_ledger(cursor):
 
 
 def table_exists(cursor):
-    cursor.execute("SELECT to_regclass(%s)", ['public."ACM_BUDGET"'])
+    cursor.execute("SELECT to_regclass(%s)", ['public."PROGRAM_BUDGETS"'])
     return cursor.fetchone()[0] is not None
 
 
-def load_total(cursor, *, for_update=False):
+def load_total(cursor, program, *, for_update=False):
     if not table_exists(cursor):
         return None
 
-    sql = 'SELECT "TOTAL_BUDGET" FROM "ACM_BUDGET" WHERE "ID" = 1'
+    sql = 'SELECT "TOTAL_BUDGET" FROM "PROGRAM_BUDGETS" WHERE "PROGRAM" = %s'
     if for_update:
         sql += " FOR UPDATE"
-    cursor.execute(sql)
+    cursor.execute(sql, [program])
     row = cursor.fetchone()
     return row[0] if row else None
 
@@ -64,79 +64,65 @@ def approved_spending(cursor, *, exclude_application_id=None):
     return spending
 
 
-def assigned_budget(total):
-    return total / Decimal("2")
-
-
 def available_for(cursor, total, program, *, exclude_application_id=None):
     spending = approved_spending(
         cursor, exclude_application_id=exclude_application_id)
-    return assigned_budget(total) - spending.get(program, ZERO)
+    return total - spending.get(program, ZERO)
 
 
-def minimum_total_for_current_approvals(cursor):
+def minimum_total_for_current_approvals(cursor, program):
     spending = approved_spending(cursor)
-    return max(spending.values()) * Decimal("2")
+    return spending.get(program, ZERO)
 
 
-def save_total(cursor, total, updated_by, updated_at):
+def save_total(cursor, program, total, updated_by, updated_at):
     cursor.execute("""
-        INSERT INTO "ACM_BUDGET"
-            ("ID", "TOTAL_BUDGET", "UPDATED_BY", "UPDATED_AT")
-        VALUES (1, %s, %s, %s)
-        ON CONFLICT ("ID") DO UPDATE
+        INSERT INTO "PROGRAM_BUDGETS"
+            ("PROGRAM", "TOTAL_BUDGET", "UPDATED_BY", "UPDATED_AT")
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT ("PROGRAM") DO UPDATE
         SET "TOTAL_BUDGET" = EXCLUDED."TOTAL_BUDGET",
             "UPDATED_BY" = EXCLUDED."UPDATED_BY",
             "UPDATED_AT" = EXCLUDED."UPDATED_AT"
-    """, [total, updated_by, updated_at])
+    """, [program, total, updated_by, updated_at])
 
 
 def format_money(value):
     return f"₹{value:,.2f}"
 
 
-def summary(cursor):
+def summary(cursor, program):
     if not table_exists(cursor):
         return {"schema_ready": False, "configured": False}
 
     cursor.execute("""
         SELECT "TOTAL_BUDGET", "UPDATED_BY", "UPDATED_AT"
-        FROM "ACM_BUDGET"
-        WHERE "ID" = 1
-    """)
+        FROM "PROGRAM_BUDGETS"
+        WHERE "PROGRAM" = %s
+    """, [program])
     row = cursor.fetchone()
     if not row:
         return {"schema_ready": True, "configured": False}
 
     total, updated_by, updated_at = row
-    assigned = assigned_budget(total)
     spending = approved_spending(cursor)
-    travel_remaining = assigned - spending[PROGRAM_TRAVEL]
-    rfg_remaining = assigned - spending[PROGRAM_RFG]
-    total_remaining = total - spending[PROGRAM_TRAVEL] - spending[PROGRAM_RFG]
+    spent = spending.get(program, ZERO)
+    remaining = total - spent
 
-    def used_percent(spent):
-        if assigned <= ZERO:
-            return 0
-        return min(100, max(0, float(spent / assigned * 100)))
+    used_percent = 0
+    if total > ZERO:
+        used_percent = min(100, max(0, float(spent / total * 100)))
 
     return {
         "schema_ready": True,
         "configured": True,
         "total": total,
         "total_display": format_money(total),
-        "assigned_travel_display": format_money(assigned),
-        "assigned_rfg_display": format_money(assigned),
-        "spent_travel_display": format_money(spending[PROGRAM_TRAVEL]),
-        "spent_rfg_display": format_money(spending[PROGRAM_RFG]),
-        "remaining_travel": travel_remaining,
-        "remaining_rfg": rfg_remaining,
-        "remaining_travel_display": format_money(travel_remaining),
-        "remaining_rfg_display": format_money(rfg_remaining),
-        "total_remaining": total_remaining,
-        "total_remaining_display": format_money(total_remaining),
-        "travel_used_percent": used_percent(spending[PROGRAM_TRAVEL]),
-        "rfg_used_percent": used_percent(spending[PROGRAM_RFG]),
+        "spent": spent,
+        "spent_display": format_money(spent),
+        "remaining": remaining,
+        "remaining_display": format_money(remaining),
+        "used_percent": used_percent,
         "updated_by": updated_by,
         "updated_at": updated_at,
     }

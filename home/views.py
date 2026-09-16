@@ -4,6 +4,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.db import connection, transaction
 from django.http import FileResponse, Http404
 import os
+import re
 from django.contrib.auth import login as auth_login
 from django.contrib.auth import logout as auth_logout
 from django.shortcuts import render, redirect
@@ -28,6 +29,10 @@ from decimal import Decimal
 from datetime import timezone as dt_timezone
 from zoneinfo import ZoneInfo
 from django.core.mail import send_mail
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
+from django.views.decorators.cache import never_cache
+from functools import wraps
 
 from home import permissions, budget as acm_budget
 from backend import rfg
@@ -124,6 +129,8 @@ def list_uploaded_documents(request):
         return JsonResponse({'error': str(e)}, status=500)
     
 def custom_login_required(view_func):
+    @wraps(view_func)
+    @never_cache
     def _wrapped_view(request, *args, **kwargs):
         if request.user.is_authenticated:
             return view_func(request, *args, **kwargs)
@@ -132,6 +139,7 @@ def custom_login_required(view_func):
     return _wrapped_view
 
 
+@never_cache
 def logout_view(request):
     logger.info(f"User  {request.user.username} is logging out.")
     print(f"INFO: User {request.user.username} is logging out.")
@@ -144,73 +152,111 @@ def logout_view(request):
     return redirect('login')  # Redirect to the login page or any other page
 
 
-@custom_login_required
 def help_page(request):
-    if not permissions.can_access_help(request):
-        return HttpResponseForbidden("You do not have permission to access this page.")
     return render(request, 'help.html')
 
 
 @custom_login_required
 def budget_management(request):
-    if not permissions.can_manage_acm_budget(request):
-        return HttpResponseForbidden("You do not have permission to manage the ACM budget.")
+    finance_program = permissions.finance_program(request)
+    is_finance_user = finance_program is not None
 
-    if request.method == "POST":
-        total_raw = request.POST.get("total_budget", "").strip()
-        try:
-            total = Decimal(total_raw)
-            if not total.is_finite():
-                raise ValueError
-        except (ArithmeticError, ValueError):
-            messages.error(request, "Enter a valid total ACM budget.")
+    # Non-Finance users get read-only access; unauthenticated or unknown users are blocked
+    if not is_finance_user and not permissions.can_view_budget(request):
+        return HttpResponseForbidden("You do not have permission to access this page.")
+
+    if is_finance_user:
+        program_label = permissions.PROGRAM_LABELS[finance_program]
+        finance_role = permissions.ROLE_FINANCE
+
+        if request.method == "POST":
+            total_raw = request.POST.get("total_budget", "").strip()
+            try:
+                total = Decimal(total_raw)
+                if not total.is_finite():
+                    raise ValueError
+            except (ArithmeticError, ValueError):
+                messages.error(request, f"Enter a valid total {program_label} budget.")
+                return redirect("budget_management")
+
+            if total <= 0:
+                messages.error(request, f"Total {program_label} budget must be greater than zero.")
+                return redirect("budget_management")
+            if total > Decimal("9999999999999"):
+                messages.error(request, f"The total {program_label} budget exceeds the supported limit.")
+                return redirect("budget_management")
+            if total != total.to_integral_value():
+                messages.error(request, f"Enter the total {program_label} budget in whole rupees.")
+                return redirect("budget_management")
+
+            editor_name = (
+                request.session.get("user_name")
+                or request.session.get("user_email")
+                or finance_role
+            )[:255]
+
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    acm_budget.lock_ledger(cursor)
+                    if not acm_budget.table_exists(cursor):
+                        return render(
+                            request,
+                            "budget_management.html",
+                            {
+                                "budget": {"schema_ready": False, "configured": False},
+                                "program": finance_program,
+                                "program_label": program_label,
+                                "finance_role": finance_role,
+                                "is_finance_user": True,
+                            },
+                            status=503)
+
+                    minimum_total = acm_budget.minimum_total_for_current_approvals(
+                        cursor, finance_program)
+                    if total < minimum_total:
+                        messages.error(
+                            request,
+                            "The %s budget cannot be reduced below %s because of existing approved grants."
+                            % (program_label, acm_budget.format_money(minimum_total)))
+                        return redirect("budget_management")
+
+                    acm_budget.save_total(
+                        cursor, finance_program, total, editor_name, timezone.now())
+
+            messages.success(request, f"The {program_label} budget was updated successfully.")
             return redirect("budget_management")
 
-        if total <= 0:
-            messages.error(request, "Total ACM budget must be greater than zero.")
-            return redirect("budget_management")
-        if total > Decimal("9999999999999"):
-            messages.error(request, "The total ACM budget exceeds the supported limit.")
-            return redirect("budget_management")
-        if total != total.to_integral_value():
-            messages.error(request, "Enter the total ACM budget in whole rupees.")
-            return redirect("budget_management")
+        with connection.cursor() as cursor:
+            budget_summary = acm_budget.summary(cursor, finance_program)
+        if budget_summary.get("updated_at"):
+            budget_summary["updated_at"] = _as_utc_aware(budget_summary["updated_at"])
 
-        editor_name = (
-            request.session.get("user_name")
-            or request.session.get("user_email")
-            or "System Reviewer"
-        )[:255]
+        return render(request, "budget_management.html", {
+            "budget": budget_summary,
+            "program": finance_program,
+            "program_label": program_label,
+            "finance_role": finance_role,
+            "is_finance_user": True,
+        })
 
-        with transaction.atomic():
-            with connection.cursor() as cursor:
-                acm_budget.lock_ledger(cursor)
-                if not acm_budget.table_exists(cursor):
-                    return render(
-                        request,
-                        "budget_management.html",
-                        {"budget": {"schema_ready": False, "configured": False}},
-                        status=503)
-
-                minimum_total = acm_budget.minimum_total_for_current_approvals(cursor)
-                if total < minimum_total:
-                    messages.error(
-                        request,
-                        "The total cannot be reduced below %s because of existing approved grants."
-                        % acm_budget.format_money(minimum_total))
-                    return redirect("budget_management")
-
-                acm_budget.save_total(cursor, total, editor_name, timezone.now())
-
-        messages.success(request, "The ACM budget was updated successfully.")
-        return redirect("budget_management")
-
+    # --- Read-only view for non-Finance internal users ---
+    # Show budget summaries only for programmes the user has access to
+    budgets = []
     with connection.cursor() as cursor:
-        budget_summary = acm_budget.summary(cursor)
-    if budget_summary.get("updated_at"):
-        budget_summary["updated_at"] = _as_utc_aware(budget_summary["updated_at"])
+        for prog in permissions.visible_programs(request):
+            summary = acm_budget.summary(cursor, prog)
+            if summary.get("updated_at"):
+                summary["updated_at"] = _as_utc_aware(summary["updated_at"])
+            budgets.append({
+                "program": prog,
+                "program_label": permissions.PROGRAM_LABELS[prog],
+                "budget": summary,
+            })
 
-    return render(request, "budget_management.html", {"budget": budget_summary})
+    return render(request, "budget_management.html", {
+        "is_finance_user": False,
+        "budgets": budgets,
+    })
 
 
 # Create your views here.
@@ -226,8 +272,8 @@ def dashboard(request):
     user_email = request.session.get('user_email')
     user_role = request.session.get('user_role')
 
-    # Only the programmes this user holds a role in. System Reviewer holds none
-    # (it is a user-administration role), so it legitimately sees nothing here.
+    # Programme roles determine the list. Finance is read-only and is confined
+    # to the single programme associated with its reserved username.
     programs = permissions.visible_programs(request)
 
     # -------------------------
@@ -537,7 +583,7 @@ def application_details(request, app_id):
         final_approval = None
         approved_amount = None
 
-        if fa:
+        if fa and application.get("status") == "Accepted":
             final_approval = {
                 "amount": fa[0],
                 "feedback": fa[1],
@@ -571,7 +617,7 @@ def application_details(request, app_id):
 @custom_login_required
 @require_POST
 def update_budget_details(request, app_id):
-    """Update only the applicant-supplied fields shown in Budget Details."""
+    """Update committee evaluation fields in Budget Details."""
     program = _program_of(app_id)
     if program is None:
         return render(request, "404.html", {"message": "Application not found"}, status=404)
@@ -579,27 +625,30 @@ def update_budget_details(request, app_id):
     if not permissions.can_edit_budget(request, program):
         return HttpResponseForbidden("You do not have permission to edit budget details.")
 
-    travel_budget_raw = request.POST.get("travel_budget", "").strip()
-    budget_justification = request.POST.get("budget_justification", "").strip()
+    decision_status = request.POST.get("decision_status", "").strip()
+    approved_support_amount_raw = request.POST.get("approved_support_amount", "").strip()
+    committee_evaluation_notes = request.POST.get("committee_evaluation_notes", "").strip()
 
-    try:
-        travel_budget = Decimal(travel_budget_raw)
-        if not travel_budget.is_finite():
-            raise ValueError
-    except (ArithmeticError, ValueError):
-        messages.error(request, "Travel budget must be a valid amount.")
+    VALID_DECISION_STATUSES = ("Pending", "Approved", "Rejected", "Archived")
+    if decision_status and decision_status not in VALID_DECISION_STATUSES:
+        messages.error(request, "Invalid decision status selected.")
         return redirect("application_details", app_id=app_id)
 
-    if travel_budget <= 0 or travel_budget > Decimal("99999999.99"):
-        messages.error(request, "Travel budget must be greater than zero and within the supported limit.")
-        return redirect("application_details", app_id=app_id)
-    if travel_budget.normalize().as_tuple().exponent < -2:
-        messages.error(request, "Travel budget can have at most two decimal places.")
-        return redirect("application_details", app_id=app_id)
-
-    if not budget_justification:
-        messages.error(request, "Budget justification is required.")
-        return redirect("application_details", app_id=app_id)
+    approved_support_amount = None
+    if approved_support_amount_raw:
+        try:
+            approved_support_amount = Decimal(approved_support_amount_raw)
+            if not approved_support_amount.is_finite() or approved_support_amount < 0:
+                raise ValueError
+        except (ArithmeticError, ValueError):
+            messages.error(request, "Approved support amount must be a valid non-negative number.")
+            return redirect("application_details", app_id=app_id)
+        if approved_support_amount > Decimal("9999999999999.99"):
+            messages.error(request, "Approved support amount exceeds the supported limit.")
+            return redirect("application_details", app_id=app_id)
+        if approved_support_amount.normalize().as_tuple().exponent < -2:
+            messages.error(request, "Approved support amount can have at most two decimal places.")
+            return redirect("application_details", app_id=app_id)
 
     editor_name = (
         request.session.get("user_name")
@@ -614,54 +663,165 @@ def update_budget_details(request, app_id):
         with connection.cursor() as cursor:
             acm_budget.lock_ledger(cursor)
             cursor.execute(
-                'SELECT "STATUS" FROM "APPLICATIONS" WHERE "ID" = %s FOR UPDATE',
+                'SELECT "STATUS", "DECISION_STATUS" FROM "APPLICATIONS" WHERE "ID" = %s FOR UPDATE',
                 [app_id])
-            status = cursor.fetchone()[0]
+            app_row = cursor.fetchone()
+            if not app_row:
+                messages.error(request, "Application not found.")
+                return redirect("dashboard")
+            current_status, current_decision = app_row[0], app_row[1]
 
-            if status == "Accepted":
-                total_budget = acm_budget.load_total(cursor, for_update=True)
+            cursor.execute(
+                'SELECT COUNT(*) FROM "FINAL_APPROVALS" WHERE "APPLICATION_ID" = %s',
+                [app_id])
+            has_final_approval = cursor.fetchone()[0] > 0
+            is_approved = (current_status == "Accepted" or has_final_approval)
+
+            if decision_status in ("Pending", "Rejected", "Archived"):
+                # When changed to Rejected/Pending/Archived, approved amount must be empty
+                approved_support_amount = None
+                new_app_status = {
+                    "Pending": "Under Review",
+                    "Rejected": "Rejected",
+                    "Archived": "Archived",
+                }.get(decision_status, current_status)
+
+                cursor.execute("""
+                    UPDATE "APPLICATIONS"
+                    SET "STATUS" = %s,
+                        "DECISION_STATUS" = %s,
+                        "APPROVED_SUPPORT_AMOUNT" = NULL,
+                        "COMMITTEE_EVALUATION_NOTES" = %s,
+                        "BUDGET_EDITED_BY" = %s,
+                        "BUDGET_EDITED_AT" = %s,
+                        "UPDATED_AT" = %s
+                    WHERE "ID" = %s
+                """, [
+                    new_app_status,
+                    decision_status,
+                    committee_evaluation_notes,
+                    editor_label,
+                    edited_at,
+                    edited_at,
+                    app_id,
+                ])
+
+                # Delete from FINAL_APPROVALS so approval state is completely cleared
+                cursor.execute("""
+                    DELETE FROM "FINAL_APPROVALS"
+                    WHERE "APPLICATION_ID" = %s
+                """, [app_id])
+
+                messages.success(
+                    request,
+                    f"Application status changed to {decision_status}. Approved support amount has been cleared."
+                )
+                return redirect("application_details", app_id=app_id)
+
+            elif decision_status == "Approved":
+                if approved_support_amount is None:
+                    messages.error(request, "Approved support amount is required when status is Approved.")
+                    return redirect("application_details", app_id=app_id)
+
+                if approved_support_amount <= 0:
+                    messages.error(request, "Approved support amount must be greater than zero.")
+                    return redirect("application_details", app_id=app_id)
+
+                if program == permissions.PROGRAM_TRAVEL and approved_support_amount > Decimal("100000"):
+                    messages.error(request, "Travel Grant approvals cannot exceed Rs. 1,00,000.")
+                    return redirect("application_details", app_id=app_id)
+
+                if (program == permissions.PROGRAM_RFG
+                        and approved_support_amount > Decimal(str(rfg.RFG_APPROVAL_CAP))):
+                    messages.error(
+                        request,
+                        "Research Facilitation Grant approvals cannot exceed Rs. %s."
+                        % f"{rfg.RFG_APPROVAL_CAP:,}")
+                    return redirect("application_details", app_id=app_id)
+
+                total_budget = acm_budget.load_total(
+                    cursor, program, for_update=True)
                 if total_budget is not None:
                     available = acm_budget.available_for(
                         cursor,
                         total_budget,
                         program,
                         exclude_application_id=app_id)
-                    if travel_budget > available:
+                    if approved_support_amount > available:
                         messages.error(
                             request,
-                            "Travel budget cannot exceed the available %s budget of %s."
+                            "Approved amount cannot exceed the available %s budget of %s."
                             % (
                                 permissions.PROGRAM_LABELS.get(program, program),
                                 acm_budget.format_money(max(available, Decimal("0"))),
                             ))
                         return redirect("application_details", app_id=app_id)
 
-            cursor.execute("""
-                UPDATE "APPLICATIONS"
-                SET "TRAVEL_BUDGET" = %s,
-                    "BUDGET_JUSTIFICATION" = %s,
-                    "BUDGET_EDITED_BY" = %s,
-                    "BUDGET_EDITED_AT" = %s,
-                    "UPDATED_AT" = %s
-                WHERE "ID" = %s
-            """, [
-                travel_budget,
-                budget_justification,
-                editor_label,
-                edited_at,
-                edited_at,
-                app_id,
-            ])
+                cursor.execute("""
+                    UPDATE "APPLICATIONS"
+                    SET "STATUS" = 'Accepted',
+                        "DECISION_STATUS" = 'Approved',
+                        "APPROVED_SUPPORT_AMOUNT" = %s,
+                        "COMMITTEE_EVALUATION_NOTES" = %s,
+                        "REJECTION_REASON" = NULL,
+                        "BUDGET_EDITED_BY" = %s,
+                        "BUDGET_EDITED_AT" = %s,
+                        "UPDATED_AT" = %s
+                    WHERE "ID" = %s
+                """, [
+                    approved_support_amount,
+                    committee_evaluation_notes,
+                    editor_label,
+                    edited_at,
+                    edited_at,
+                    app_id,
+                ])
 
-            if status == "Accepted":
                 cursor.execute("""
                     UPDATE "FINAL_APPROVALS"
                     SET "APPROVED_AMOUNT" = %s
                     WHERE "APPLICATION_ID" = %s
-                """, [travel_budget, app_id])
+                """, [approved_support_amount, app_id])
 
-    messages.success(request, "Budget details updated successfully.")
-    return redirect("application_details", app_id=app_id)
+                if cursor.rowcount == 0:
+                    cursor.execute("""
+                        SELECT u."ID" FROM "USERS" u
+                        JOIN "USER_PROGRAM_ROLES" up ON up."USER_ID" = u."ID"
+                        WHERE up."PROGRAM" = %s AND up."ROLE" = 'Chairman'
+                        LIMIT 1
+                    """, [program])
+                    chair_row = cursor.fetchone()
+                    chairman_id = chair_row[0] if chair_row else request.session.get("user_id")
+
+                    cursor.execute("""
+                        INSERT INTO "FINAL_APPROVALS"
+                        ("APPLICATION_ID", "CHAIRMAN_ID", "APPROVED_AMOUNT", "FEEDBACK")
+                        VALUES (%s, %s, %s, %s)
+                    """, [app_id, chairman_id, approved_support_amount, committee_evaluation_notes or "Approved via Budget Details"])
+
+                messages.success(
+                    request,
+                    f"Budget details updated. Approved amount set to ₹{approved_support_amount:,.2f}."
+                )
+                return redirect("application_details", app_id=app_id)
+
+            else:
+                cursor.execute("""
+                    UPDATE "APPLICATIONS"
+                    SET "COMMITTEE_EVALUATION_NOTES" = %s,
+                        "BUDGET_EDITED_BY" = %s,
+                        "BUDGET_EDITED_AT" = %s,
+                        "UPDATED_AT" = %s
+                    WHERE "ID" = %s
+                """, [
+                    committee_evaluation_notes,
+                    editor_label,
+                    edited_at,
+                    edited_at,
+                    app_id,
+                ])
+                messages.success(request, "Budget details updated successfully.")
+                return redirect("application_details", app_id=app_id)
 
 
 @csrf_exempt
@@ -814,6 +974,13 @@ def submit_final_approval(request, app_id):
                 messages.error(request, "Approved amount can have at most two decimal places.")
                 return redirect('application_details', app_id=app_id)
 
+            if (program == permissions.PROGRAM_TRAVEL
+                    and amount_value > Decimal("100000")):
+                messages.error(
+                    request,
+                    "Travel Grant approvals cannot exceed Rs. 1,00,000.")
+                return redirect('application_details', app_id=app_id)
+
             # RFG is capped. Applicants may request more (the applicant-facing
             # form never states a cap), but approval cannot exceed it. Enforced
             # here rather than only in the template, because this endpoint is
@@ -826,7 +993,8 @@ def submit_final_approval(request, app_id):
                     % f"{rfg.RFG_APPROVAL_CAP:,}")
                 return redirect('application_details', app_id=app_id)
 
-            total_budget = acm_budget.load_total(cursor, for_update=True)
+            total_budget = acm_budget.load_total(
+                cursor, program, for_update=True)
             if total_budget is not None:
                 available = acm_budget.available_for(
                     cursor,
@@ -854,19 +1022,22 @@ def submit_final_approval(request, app_id):
             # Update status
             cursor.execute("""
                 UPDATE "APPLICATIONS"
-                SET "STATUS" = 'Accepted'
+                SET "STATUS" = 'Accepted',
+                    "DECISION_STATUS" = 'Approved',
+                    "APPROVED_SUPPORT_AMOUNT" = %s
                 WHERE "ID" = %s
-            """, [app_id])
+            """, [amount_value, app_id])
 
         messages.success(
             request,
             f"Application accepted with ₹{amount}. The applicant has NOT been notified yet — "
             f"use 'Notify Applicant' below to send the decision.")
         return redirect('application_details', app_id=app_id)
-        
+
     except Exception as e:
         logger.error(f"Error submitting final approval: {e}")
         return JsonResponse({"error": str(e)}, status=500)
+
 
 @csrf_exempt
 @custom_login_required
@@ -1021,6 +1192,7 @@ Regards,
         messages.error(request, "The notification email could not be sent. Please try again.")
         return redirect('application_details', app_id=app_id)
 
+
 @csrf_exempt
 @custom_login_required
 def reject_application(request, app_id):
@@ -1069,9 +1241,16 @@ def reject_application(request, app_id):
             cursor.execute("""
                 UPDATE "APPLICATIONS"
                 SET "STATUS" = 'Rejected',
+                    "DECISION_STATUS" = 'Rejected',
+                    "APPROVED_SUPPORT_AMOUNT" = NULL,
                     "REJECTION_REASON" = %s
                 WHERE "ID" = %s
             """, [reason, app_id])
+
+            cursor.execute("""
+                DELETE FROM "FINAL_APPROVALS"
+                WHERE "APPLICATION_ID" = %s
+            """, [app_id])
 
         # The decision is held as a draft: no email goes out here. The Chairman
         # sends it explicitly from the application page via notify_applicant.
@@ -1086,7 +1265,6 @@ def reject_application(request, app_id):
         logger.exception(f"Error rejecting application {app_id}")
         messages.error(request, "An error occurred while rejecting the application.")
         return redirect('dashboard')
-
 
 
 def travel_grant_form(request):
@@ -1106,18 +1284,17 @@ def travel_grant_form(request):
     })
 
 
-
-
 from django.contrib.auth.hashers import check_password, make_password
 
 @custom_login_required
 def profile_update(request):
     """User profile page - update profile, password, add/update users (System Reviewer)"""
-    
     email = request.user.email
     profile_message = None
     password_message = None
     add_user_message = None
+    add_user_errors = {}
+    add_user_values = {}
     update_user_message = None
 
     user_role = request.session.get('user_role')
@@ -1228,13 +1405,162 @@ def profile_update(request):
             new_email = request.POST.get('new_email', '').strip()
             new_mobile = request.POST.get('new_mobile', '').strip()
             new_role = request.POST.get('new_role', '').strip()
+            new_travel_role = request.POST.get('new_travel_role', '').strip()
+            new_rfg_role = request.POST.get('new_rfg_role', '').strip()
             new_password = request.POST.get('new_password', '').strip()
             new_photo = request.FILES.get('new_photo')
             print("DEBUG: Add user POST received", new_username, new_email, new_role)
 
-            if not (new_name and new_username and new_email and new_role and new_password):
-                add_user_message = "Please fill all required fields!"
+            # Preserve non-sensitive values only after a failed submission. The
+            # form remains completely empty on its initial load.
+            add_user_values = {
+                'new_name': new_name,
+                'new_username': new_username,
+                'new_email': new_email,
+                'new_mobile': new_mobile,
+                'new_role': new_role,
+                'new_travel_role': new_travel_role,
+                'new_rfg_role': new_rfg_role,
+            }
+
+            if not new_name:
+                add_user_errors['new_name'] = "Name is required."
+            elif len(new_name) < 2:
+                add_user_errors['new_name'] = "Name must contain at least 2 characters."
+            elif len(new_name) > 100:
+                add_user_errors['new_name'] = "Name cannot exceed 100 characters."
+            elif (not any(char.isalnum() for char in new_name) or
+                  not all(char.isalnum() or char in " .'-" for char in new_name)):
+                add_user_errors['new_name'] = "Use letters, numbers, spaces, apostrophes, periods or hyphens only."
+
+            if not new_username:
+                add_user_errors['new_username'] = "Username is required."
+            elif not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{1,62}[A-Za-z0-9]", new_username):
+                add_user_errors['new_username'] = (
+                    "Use 3-64 letters, numbers, periods, underscores or hyphens; "
+                    "start and end with a letter or number."
+                )
+
+            if not new_email:
+                add_user_errors['new_email'] = "Email is required."
+            elif len(new_email) > 150:
+                add_user_errors['new_email'] = "Email cannot exceed 150 characters."
             else:
+                try:
+                    validate_email(new_email)
+                except ValidationError:
+                    add_user_errors['new_email'] = "Enter a valid email address."
+
+            if new_mobile and not re.fullmatch(r"\d{10}", new_mobile):
+                add_user_errors['new_mobile'] = "Phone number must contain exactly 10 digits."
+
+            valid_account_roles = {
+                permissions.STANDARD_ACCOUNT_ROLE,
+                permissions.SYSTEM_REVIEWER,
+            }
+            if new_role not in valid_account_roles:
+                add_user_errors['new_role'] = "Select a valid account type."
+
+            valid_program_roles = {
+                "NONE",
+                permissions.ROLE_REVIEWER,
+                permissions.ROLE_CHAIRMAN,
+                permissions.ROLE_OBSERVER,
+                permissions.ROLE_FINANCE,
+            }
+            if new_travel_role not in valid_program_roles:
+                add_user_errors['new_travel_role'] = "Select Travel Support access."
+            if new_rfg_role not in valid_program_roles:
+                add_user_errors['new_rfg_role'] = "Select Research Facilitation Grant access."
+
+            expected_finance_program = permissions.FINANCE_ACCOUNTS.get(new_username)
+            assigned_finance_programs = {
+                program for program, role in (
+                    (permissions.PROGRAM_TRAVEL, new_travel_role),
+                    (permissions.PROGRAM_RFG, new_rfg_role),
+                ) if role == permissions.ROLE_FINANCE
+            }
+
+            if expected_finance_program is not None:
+                if new_role != permissions.STANDARD_ACCOUNT_ROLE:
+                    add_user_errors['new_role'] = (
+                        "Finance users must use the Standard account type."
+                    )
+                if expected_finance_program == permissions.PROGRAM_TRAVEL:
+                    if new_travel_role != permissions.ROLE_FINANCE:
+                        add_user_errors['new_travel_role'] = (
+                            "tg-finance must have Finance access for Travel Support."
+                        )
+                    if new_rfg_role != "NONE":
+                        add_user_errors['new_rfg_role'] = (
+                            "tg-finance cannot access Research Facilitation Grant applications."
+                        )
+                else:
+                    if new_rfg_role != permissions.ROLE_FINANCE:
+                        add_user_errors['new_rfg_role'] = (
+                            "rfg-finance must have Finance access for Research Facilitation Grant."
+                        )
+                    if new_travel_role != "NONE":
+                        add_user_errors['new_travel_role'] = (
+                            "rfg-finance cannot access Travel Support applications."
+                        )
+            elif assigned_finance_programs:
+                add_user_errors['new_username'] = (
+                    "Finance access is reserved for tg-finance or rfg-finance."
+                )
+
+            if not new_password:
+                add_user_errors['new_password'] = "Password is required."
+
+            if new_photo:
+                allowed_photo_types = {
+                    '.jpg': ('image/jpeg', 'JPEG'),
+                    '.jpeg': ('image/jpeg', 'JPEG'),
+                    '.png': ('image/png', 'PNG'),
+                    '.gif': ('image/gif', 'GIF'),
+                    '.webp': ('image/webp', 'WEBP'),
+                }
+                extension = os.path.splitext(new_photo.name)[1].lower()
+                expected = allowed_photo_types.get(extension)
+                header = new_photo.read(16)
+                new_photo.seek(0)
+                detected_format = None
+                if header.startswith(b'\xff\xd8\xff'):
+                    detected_format = 'JPEG'
+                elif header.startswith(b'\x89PNG\r\n\x1a\n'):
+                    detected_format = 'PNG'
+                elif header.startswith((b'GIF87a', b'GIF89a')):
+                    detected_format = 'GIF'
+                elif len(header) >= 12 and header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+                    detected_format = 'WEBP'
+
+                if not expected or new_photo.content_type != expected[0] or detected_format != expected[1]:
+                    add_user_errors['new_photo'] = "Upload a valid JPG, PNG, GIF or WebP image."
+                elif new_photo.size > settings.MAX_UPLOAD_BYTES:
+                    max_mb = settings.MAX_UPLOAD_BYTES // (1024 * 1024)
+                    add_user_errors['new_photo'] = f"Photo size cannot exceed {max_mb} MB."
+
+            if 'new_username' not in add_user_errors or 'new_email' not in add_user_errors:
+                with connection.cursor() as cursor:
+                    if 'new_username' not in add_user_errors:
+                        cursor.execute("""
+                            SELECT 1 FROM "USERS"
+                            WHERE LOWER("USERNAME") = LOWER(%s)
+                            LIMIT 1
+                        """, [new_username])
+                        if cursor.fetchone():
+                            add_user_errors['new_username'] = "That username is already in use."
+
+                    if 'new_email' not in add_user_errors:
+                        cursor.execute("""
+                            SELECT 1 FROM "USERS"
+                            WHERE LOWER("EMAIL") = LOWER(%s)
+                            LIMIT 1
+                        """, [new_email])
+                        if cursor.fetchone():
+                            add_user_errors['new_email'] = "That email address is already in use."
+
+            if not add_user_errors:
                 new_password_hash = hashlib.md5(new_password.encode()).hexdigest()
                 photo_path = None
 
@@ -1256,56 +1582,178 @@ def profile_update(request):
                     """, [new_name, new_username, new_email, new_mobile or None, new_role, new_password_hash, photo_path])
                     new_user_id = cursor.fetchone()[0]
 
-                # Programme access is what actually governs the review workflow;
-                # USERS.ROLE above only carries the global System Reviewer flag.
+                # Finance is a programme role on a standard account, just like
+                # the other programme-scoped access levels.
                 permissions.set_program_role(
                     new_user_id, permissions.PROGRAM_TRAVEL,
-                    (request.POST.get('new_travel_role') or '').strip())
+                    '' if new_travel_role == 'NONE' else new_travel_role)
                 permissions.set_program_role(
                     new_user_id, permissions.PROGRAM_RFG,
-                    (request.POST.get('new_rfg_role') or '').strip())
+                    '' if new_rfg_role == 'NONE' else new_rfg_role)
 
                 add_user_message = f"User {new_username} added successfully!"
+                add_user_values = {}
                 print("DEBUG: New user added:", new_username)
 
         # ================= UPDATE EXISTING USER (System Reviewer only) =================
         if user_role == "System Reviewer" and request.method == "POST" and request.POST.get("update_user_id"):
             update_user_id = request.POST.get("update_user_id")
+            update_name = request.POST.get("update_name", '').strip()
+            update_username = request.POST.get("update_username", '').strip()
+            update_email = request.POST.get("update_email", '').strip()
             update_mobile = request.POST.get("update_mobile", '').strip()
             update_status = request.POST.get("update_status", '').strip()
             update_password = request.POST.get("update_password", '').strip()
+            update_travel_role = (
+                request.POST.get('update_travel_role') or '').strip()
+            update_rfg_role = (
+                request.POST.get('update_rfg_role') or '').strip()
             print("DEBUG: Update user POST received", update_user_id)
 
-            fields_to_update = []
-            values = []
+            if not (update_name and update_username and update_email):
+                raise ValueError("Name, username and email are required.")
+            if len(update_name) > 100:
+                raise ValueError("Name cannot exceed 100 characters.")
+            if len(update_username) > 64:
+                raise ValueError("Username cannot exceed 64 characters.")
+            if len(update_email) > 150:
+                raise ValueError("Email cannot exceed 150 characters.")
+            try:
+                validate_email(update_email)
+            except ValidationError as exc:
+                raise ValueError("Enter a valid email address.") from exc
 
-            if update_mobile:
-                fields_to_update.append('"MOBILE_NO" = %s')
-                values.append(update_mobile)
-
-            if update_status:
-                fields_to_update.append('"STATUS" = %s')
-                values.append(update_status)
-
-            if update_password:
-                password_hash = hashlib.md5(update_password.encode()).hexdigest()
-                fields_to_update.append('"PASSWORD" = %s')
-                values.append(password_hash)
-
-            if fields_to_update:
-                values.append(update_user_id)
-                query = f'UPDATE "USERS" SET {", ".join(fields_to_update)}, "UPDATED_AT" = CURRENT_TIMESTAMP WHERE "ID" = %s'
+            with transaction.atomic():
                 with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT "EMAIL", "ROLE", "USERNAME"
+                        FROM "USERS"
+                        WHERE "ID" = %s
+                    """, [update_user_id])
+                    current_user = cursor.fetchone()
+
+                    if not current_user:
+                        raise ValueError("The selected user no longer exists.")
+
+                    current_email, current_role, current_username = current_user
+                    current_program_roles = permissions.load_program_roles(
+                        update_user_id)
+                    current_is_finance = permissions.ROLE_FINANCE in (
+                        current_program_roles.values())
+                    if current_is_finance and update_username != current_username:
+                        raise ValueError(
+                            "Finance usernames are fixed and cannot be changed.")
+
+                    expected_finance_program = permissions.FINANCE_ACCOUNTS.get(
+                        update_username)
+                    assigned_finance_programs = {
+                        program for program, role in (
+                            (permissions.PROGRAM_TRAVEL, update_travel_role),
+                            (permissions.PROGRAM_RFG, update_rfg_role),
+                        ) if role == permissions.ROLE_FINANCE
+                    }
+                    if expected_finance_program is not None:
+                        if current_role != permissions.STANDARD_ACCOUNT_ROLE:
+                            raise ValueError(
+                                "Finance users must use the Standard account type.")
+                        expected_roles = {
+                            permissions.PROGRAM_TRAVEL: (
+                                permissions.ROLE_FINANCE
+                                if expected_finance_program == permissions.PROGRAM_TRAVEL
+                                else ''),
+                            permissions.PROGRAM_RFG: (
+                                permissions.ROLE_FINANCE
+                                if expected_finance_program == permissions.PROGRAM_RFG
+                                else ''),
+                        }
+                        if (update_travel_role != expected_roles[permissions.PROGRAM_TRAVEL]
+                                or update_rfg_role != expected_roles[permissions.PROGRAM_RFG]):
+                            raise ValueError(
+                                "%s must have Finance access only for its assigned programme."
+                                % update_username)
+                    elif assigned_finance_programs:
+                        raise ValueError(
+                            "Finance access is reserved for tg-finance or rfg-finance.")
+
+                    cursor.execute("""
+                        SELECT "ID"
+                        FROM "USERS"
+                        WHERE "ID" <> %s AND LOWER("USERNAME") = LOWER(%s)
+                        LIMIT 1
+                    """, [update_user_id, update_username])
+                    if cursor.fetchone():
+                        raise ValueError("That username is already in use.")
+
+                    cursor.execute("""
+                        SELECT "ID"
+                        FROM "USERS"
+                        WHERE "ID" <> %s AND LOWER("EMAIL") = LOWER(%s)
+                        LIMIT 1
+                    """, [update_user_id, update_email])
+                    if cursor.fetchone():
+                        raise ValueError("That email address is already in use.")
+
+                    auth_user = User.objects.filter(username=current_email).first()
+                    if auth_user is None:
+                        auth_user = User.objects.filter(email=current_email).first()
+
+                    if (auth_user is not None and
+                            User.objects.exclude(pk=auth_user.pk)
+                            .filter(username__iexact=update_email).exists()):
+                        raise ValueError("That email address is already used by a login account.")
+
+                    fields_to_update = [
+                        '"NAME" = %s',
+                        '"USERNAME" = %s',
+                        '"EMAIL" = %s',
+                    ]
+                    values = [update_name, update_username, update_email]
+
+                    if update_mobile:
+                        fields_to_update.append('"MOBILE_NO" = %s')
+                        values.append(update_mobile)
+
+                    if update_status:
+                        fields_to_update.append('"STATUS" = %s')
+                        values.append(update_status)
+
+                    if update_password:
+                        password_hash = hashlib.md5(update_password.encode()).hexdigest()
+                        fields_to_update.append('"PASSWORD" = %s')
+                        values.append(password_hash)
+
+                    values.append(update_user_id)
+                    query = f'UPDATE "USERS" SET {", ".join(fields_to_update)}, "UPDATED_AT" = CURRENT_TIMESTAMP WHERE "ID" = %s'
                     cursor.execute(query, values)
 
-            # Always applied, even when no USERS column changed -- an admin may
-            # be changing programme access alone. An empty value clears access.
-            permissions.set_program_role(
-                update_user_id, permissions.PROGRAM_TRAVEL,
-                (request.POST.get('update_travel_role') or '').strip())
-            permissions.set_program_role(
-                update_user_id, permissions.PROGRAM_RFG,
-                (request.POST.get('update_rfg_role') or '').strip())
+                # Django authentication uses the email address as its username.
+                # Keep that login record aligned with the application USERS row.
+                if auth_user is not None:
+                    auth_user.username = update_email
+                    auth_user.email = update_email
+                    auth_user.first_name = update_name
+                    auth_user.save(update_fields=["username", "email", "first_name"])
+
+                permissions.set_program_role(
+                    update_user_id, permissions.PROGRAM_TRAVEL,
+                    update_travel_role)
+                permissions.set_program_role(
+                    update_user_id, permissions.PROGRAM_RFG,
+                    update_rfg_role)
+
+            # If the System Reviewer edited their own identifiers, keep this
+            # active request/session usable without requiring an immediate logout.
+            if str(update_user_id) == str(user_id):
+                request.session['user_name'] = update_name
+                request.session['user_email'] = update_email
+                request.user.username = update_email
+                request.user.email = update_email
+                request.user.first_name = update_name
+                profile_user.update({
+                    'name': update_name,
+                    'username': update_username,
+                    'email': update_email,
+                })
 
             update_user_message = f"User ID {update_user_id} updated successfully!"
             print("DEBUG: User updated:", update_user_id)
@@ -1357,12 +1805,17 @@ def profile_update(request):
         'profile_message': profile_message,
         'password_message': password_message,
         'add_user_message': add_user_message,
+        'add_user_errors': add_user_errors,
+        'add_user_values': add_user_values,
+        'add_user_photo_max_bytes': settings.MAX_UPLOAD_BYTES,
+        'add_user_photo_max_mb': settings.MAX_UPLOAD_BYTES // (1024 * 1024),
         'update_user_message': update_user_message,
         'user_role': user_role,
         'all_users': all_users,
         'program_role_choices': [permissions.ROLE_REVIEWER,
                                  permissions.ROLE_CHAIRMAN,
-                                 permissions.ROLE_OBSERVER],
+                                 permissions.ROLE_OBSERVER,
+                                 permissions.ROLE_FINANCE],
     })
 
 

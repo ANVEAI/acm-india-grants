@@ -8,6 +8,7 @@ import random
 import random
 from decimal import Decimal
 from datetime import datetime, timedelta, date
+from functools import wraps
 from django.conf import settings
 from django.shortcuts import render, redirect
 from django.http import (
@@ -19,6 +20,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.core.files.storage import FileSystemStorage
 from django.db import connection, transaction
+from django.views.decorators.cache import never_cache
 
 from home import permissions
 from backend import rfg
@@ -38,11 +40,12 @@ def admin_api_login_required(view_func):
     answer in JSON, so an unauthenticated caller gets 403 rather than a
     redirect to the login page.
     """
+    @wraps(view_func)
+    @never_cache
     def _wrapped(request, *args, **kwargs):
         if not request.user.is_authenticated:
             return JsonResponse({"detail": "Authentication required"}, status=403)
         return view_func(request, *args, **kwargs)
-    _wrapped.__name__ = view_func.__name__
     return _wrapped
 
 
@@ -74,15 +77,27 @@ def get_ist_timestamp():
 # ============================================================
 # LOGIN VIEW
 # ============================================================
+@never_cache
 def login_view(request):
     logger.info("Rendering login page or handling login request")
 
+    # A login page restored from browser history may contain the CSRF token
+    # that existed before Django rotated it at the previous login. A fresh GET
+    # must never show that stale form to an already authenticated user.
+    if request.method == "GET" and request.user.is_authenticated:
+        return redirect('dashboard')
+
     if request.method == "POST":
-        email = request.POST.get('email')
+        username = request.POST.get('username')
         password = request.POST.get('password')
 
-        if not email or not password:
-            return render(request, 'login.html', {"error": "Email and password are required"})
+        username = (username or '').strip()
+
+        if not username or not password:
+            return render(request, 'login.html', {
+                "error": "Username and password are required",
+                "entered_username": username,
+            })
 
         hashed_password = hashlib.md5(password.encode()).hexdigest()
 
@@ -90,60 +105,79 @@ def login_view(request):
             conn = get_db_connection()
             cursor = conn.cursor()
 
+            # Strictly match by exact case-sensitive USERNAME column only
             cursor.execute("""
-                SELECT "NAME","ROLE","EMAIL","ID"
+                SELECT "NAME", "ROLE", "EMAIL", "ID", "USERNAME", "PASSWORD", "STATUS"
                 FROM "USERS"
-                WHERE "EMAIL"=%s AND "PASSWORD"=%s
-                AND "STATUS"='Active'
+                WHERE "USERNAME" = %s
                 LIMIT 1
-            """, [email, hashed_password])
+            """, [username])
 
             user = cursor.fetchone()
 
             if user:
-                user_name, user_role, user_email, user_id = user
+                user_name, user_role, user_email, user_id, db_username, db_password, user_status = user
 
-                # Optionally, create/get Django auth user
-                user_obj, created = User.objects.get_or_create(
-                    username=email,
-                    defaults={"first_name": user_name, "email": user_email}
-                )
+                # Check if user account is inactive
+                if str(user_status or '').strip().lower() != 'active':
+                    return render(request, 'login.html', {
+                        "error": "Account is inactive. Please contact the administrator.",
+                        "entered_username": username,
+                    })
 
-                auth_login(request, user_obj)  # log in Django user
+                if db_password == hashed_password:
+                    # Optionally, create/get Django auth user
+                    user_obj, created = User.objects.get_or_create(
+                        username=user_email,
+                        defaults={"first_name": user_name, "email": user_email}
+                    )
 
-                # Written AFTER auth_login on purpose: login() flushes the session
-                # when a different user was previously authenticated in it, which
-                # would silently wipe these four keys and leave an authenticated
-                # session with no role.
-                request.session['user_name'] = user_name
-                request.session['user_role'] = user_role
-                request.session['user_email'] = user_email
-                request.session['user_id'] = user_id
+                    if user_obj.email != user_email or user_obj.first_name != user_name:
+                        user_obj.email = user_email
+                        user_obj.first_name = user_name
+                        user_obj.save(update_fields=['email', 'first_name'])
 
-                # "Remember me" keeps the session alive across browser restarts.
-                # Unticked, set_expiry(0) makes it a browser-session cookie while
-                # the stored session still honours SESSION_COOKIE_AGE.
-                if request.POST.get('remember'):
-                    request.session.set_expiry(settings.REMEMBER_ME_SESSION_AGE)
-                else:
-                    request.session.set_expiry(0)
+                    auth_login(request, user_obj)  # log in Django user
 
-                logger.info(f"User {user_name} logged in successfully")
+                    # Written AFTER auth_login on purpose: login() flushes the session
+                    # when a different user was previously authenticated in it, which
+                    # would silently wipe these four keys and leave an authenticated
+                    # session with no role.
+                    request.session['user_name'] = user_name
+                    request.session['user_role'] = user_role
+                    request.session['user_email'] = user_email
+                    request.session['user_id'] = user_id
 
-                # Redirect to home/dashboard
-                return redirect('dashboard')
+                    # "Remember me" keeps the session alive across browser restarts.
+                    # Unticked, set_expiry(0) makes it a browser-session cookie while
+                    # the stored session still honours SESSION_COOKIE_AGE.
+                    if request.POST.get('remember'):
+                        request.session.set_expiry(settings.REMEMBER_ME_SESSION_AGE)
+                    else:
+                        request.session.set_expiry(0)
+
+                    logger.info(f"User {user_name} logged in successfully")
+
+                    # Redirect to home/dashboard
+                    return redirect('dashboard')
 
             # Invalid credentials
-            return render(request, 'login.html', {"error": "Invalid email or password"})
+            return render(request, 'login.html', {
+                "error": "Invalid username or password",
+                "entered_username": username,
+            })
 
         except Exception as e:
             logger.error(f"Login error: {str(e)}")
-            return render(request, 'login.html', {"error": "Internal server error"})
+            return render(request, 'login.html', {
+                "error": "Internal server error",
+                "entered_username": username,
+            })
 
         finally:
-            if 'cursor' in locals():
+            if 'cursor' in locals() and cursor:
                 cursor.close()
-            if 'conn' in locals():
+            if 'conn' in locals() and conn:
                 conn.close()
 
     # GET request

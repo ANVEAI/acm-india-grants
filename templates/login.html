@@ -173,13 +173,13 @@
                 {% csrf_token %}
 
                 <div class="form-group">
-                    <label for="email">Email Address</label>
-                    <input type="email" id="email" name="email" placeholder="Enter your email" required>
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" placeholder="Enter your username" required autocomplete="username" autocapitalize="none" spellcheck="false" value="{{ entered_username|default:'' }}">
                 </div>
 
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password" placeholder="Enter your password" required>
+                    <input type="password" id="password" name="password" placeholder="Enter your password" required autocomplete="current-password">
                 </div>
 
                 <div class="form-check">
@@ -193,5 +193,18 @@
     </div>
 
     <script src="{% static 'js/bootstrap.min.js' %}"></script>
+    <script>
+
+        // Browsers may restore this page from their back/forward cache without
+        // asking Django for a fresh CSRF token. Reloading a history-restored
+        // form lets Django issue the current token (or redirect an already
+        // authenticated user back to the dashboard).
+        window.addEventListener('pageshow', function (event) {
+            const navigation = performance.getEntriesByType('navigation')[0];
+            if (event.persisted || (navigation && navigation.type === 'back_forward')) {
+                window.location.reload();
+            }
+        });
+    </script>
 </body>
 </html>

@@ -1,11 +1,11 @@
 {% extends "common/base_layout.html" %}
 
-{% block title %}Budget Management - ACM India Grants{% endblock %}
+{% block title %}{{ program_label }} Budget - ACM India Grants{% endblock %}
 
 {% block extra_css %}
 <style>
     .budget-page {
-        max-width: 1120px;
+        max-width: 1040px;
         padding-top: 2.5rem;
         padding-bottom: 3rem;
     }
@@ -16,12 +16,23 @@
         font-weight: 700;
     }
 
+    .budget-role-badge {
+        color: #4657bb;
+        background: #eef0ff;
+        border: 1px solid #dce1ff;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 0.55rem 0.85rem;
+        white-space: nowrap;
+    }
+
     .budget-admin-card,
     .budget-metric,
-    .budget-total-remaining {
+    .budget-status {
         background: #fff;
         border: 1px solid #e7eaf0;
-        border-radius: 10px;
+        border-radius: 12px;
         box-shadow: 0 4px 14px rgba(32, 43, 72, 0.05);
     }
 
@@ -31,7 +42,7 @@
     }
 
     .budget-input {
-        max-width: 520px;
+        max-width: 620px;
     }
 
     .budget-input .input-group-text {
@@ -60,32 +71,35 @@
         border-top: 4px solid #667eea;
     }
 
-    .budget-metric.rfg {
-        border-top-color: #34435c;
+    .budget-metric.approved {
+        border-top-color: #8390a5;
+    }
+
+    .budget-metric.remaining {
+        border-top-color: #22a06b;
     }
 
     .budget-label {
         color: #7a8496;
         font-size: 0.75rem;
         font-weight: 700;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.055em;
         text-transform: uppercase;
     }
 
     .budget-value {
-        margin: 0.35rem 0 0;
+        margin: 0.45rem 0 0;
         color: #25324b;
         font-size: 1.55rem;
         font-weight: 700;
     }
 
-    .budget-divider {
-        margin: 1.25rem 0;
-        border-top: 1px solid #edf0f4;
+    .budget-metric.remaining .budget-value {
+        color: #198754;
     }
 
     .budget-progress {
-        height: 6px;
+        height: 7px;
         overflow: hidden;
         background: #edf0f5;
         border-radius: 10px;
@@ -93,23 +107,15 @@
 
     .budget-progress-bar {
         height: 100%;
-        background: #667eea;
+        background: linear-gradient(90deg, #667eea, #7652aa);
     }
 
-    .rfg .budget-progress-bar {
-        background: #34435c;
-    }
-
-    .budget-total-remaining {
+    .budget-status {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 1rem;
-        padding: 1.25rem 1.5rem;
-    }
-
-    .budget-total-remaining .budget-value {
-        color: #198754;
+        padding: 1.2rem 1.4rem;
     }
 
     .budget-meta {
@@ -117,14 +123,28 @@
         font-size: 0.82rem;
     }
 
-    @media (max-width: 575.98px) {
+    @media (max-width: 767.98px) {
         .budget-page {
-            padding-top: 1.75rem;
+            padding-top: 1.5rem;
         }
 
-        .budget-total-remaining {
-            align-items: flex-start;
+        .budget-page-title {
+            font-size: 1.45rem;
+        }
+
+        .budget-heading,
+        .budget-status {
+            align-items: flex-start !important;
             flex-direction: column;
+        }
+
+        .budget-admin-card,
+        .budget-metric {
+            padding: 1.2rem;
+        }
+
+        .budget-save {
+            min-width: 105px;
         }
     }
 </style>
@@ -132,112 +152,156 @@
 
 {% block content %}
 <div class="container-fluid budget-page">
-    <div class="d-flex align-items-start justify-content-between gap-3 mb-4">
+
+{% if is_finance_user %}
+    {# ── Finance user: full edit UI for their single programme ── #}
+    <div class="budget-heading d-flex align-items-start justify-content-between gap-3 mb-4">
         <div>
-            <h1 class="budget-page-title mb-2">Budget Management</h1>
+            <h1 class="budget-page-title mb-2">{{ program_label }} Budget</h1>
             <p class="text-muted mb-0">
-                Set the ACM allocation and monitor the available balance across both grant programmes.
+                Manage the allocation and monitor the remaining balance for this programme.
             </p>
         </div>
-        <span class="badge bg-dark px-3 py-2">System Reviewer</span>
+        <span class="budget-role-badge">{{ finance_role }}</span>
     </div>
 
     {% if not budget.schema_ready %}
     <div class="alert alert-danger" role="alert">
-        The budget database setup has not been applied. Budget management is temporarily unavailable.
+        The programme budget database setup has not been applied. Budget management is temporarily unavailable.
     </div>
     {% else %}
     <section class="budget-admin-card mb-4" aria-labelledby="set-budget-title">
-        <div class="row align-items-end g-3">
-            <div class="col-lg-7">
-                <label id="set-budget-title" for="totalBudget" class="form-label fw-bold text-dark">
-                    Total ACM Budget
-                </label>
-                <form method="POST" class="budget-input">
-                    {% csrf_token %}
-                    <div class="input-group">
-                        <span class="input-group-text">₹</span>
-                        <input id="totalBudget" type="number" name="total_budget" class="form-control"
-                               min="1" max="9999999999999" step="1" required
-                               value="{% if budget.configured %}{{ budget.total }}{% endif %}"
-                               placeholder="Enter total budget">
-                        <button type="submit" class="btn budget-save">
-                            {% if budget.configured %}Update Budget{% else %}Save Budget{% endif %}
-                        </button>
-                    </div>
-                </form>
+        <label id="set-budget-title" for="totalBudget" class="form-label fw-bold text-dark">
+            Total Budget – {{ program_label }}
+        </label>
+        <form method="POST" class="budget-input">
+            {% csrf_token %}
+            <div class="input-group">
+                <span class="input-group-text">₹</span>
+                <input id="totalBudget" type="number" name="total_budget" class="form-control"
+                       min="1" max="9999999999999" step="1" required
+                       value="{% if budget.configured %}{{ budget.total }}{% endif %}"
+                       placeholder="Enter total budget">
+                <button type="submit" class="btn budget-save">
+                    {% if budget.configured %}Update Budget{% else %}Save Budget{% endif %}
+                </button>
             </div>
-            <div class="col-lg-5">
-                <p class="text-muted small mb-0">
-                    The total is assigned equally: 50% to Travel Grant and 50% to RFG.
-                </p>
-            </div>
-        </div>
+        </form>
+        <p class="text-muted small mb-0 mt-3">
+            Accepted {{ program_label }} grants are deducted automatically. The total cannot be reduced below the amount already approved.
+        </p>
     </section>
 
     <div class="row g-4 mb-4">
         <div class="col-md-4">
             <section class="budget-metric">
-                <div class="budget-label">Total ACM Budget</div>
+                <div class="budget-label">Total Budget</div>
                 <p class="budget-value">{% if budget.configured %}{{ budget.total_display }}{% else %}—{% endif %}</p>
-                <div class="budget-divider"></div>
-                <div class="budget-label">Total Budget Remaining</div>
-                <p class="budget-value {% if budget.configured and budget.total_remaining < 0 %}text-danger{% endif %}">
-                    {% if budget.configured %}{{ budget.total_remaining_display }}{% else %}—{% endif %}
-                </p>
             </section>
         </div>
-
         <div class="col-md-4">
-            <section class="budget-metric">
-                <div class="budget-label">Assigned Budget – Travel Grant</div>
-                <p class="budget-value">{% if budget.configured %}{{ budget.assigned_travel_display }}{% else %}—{% endif %}</p>
-                <div class="budget-divider"></div>
-                <div class="budget-label">Budget Remaining – Travel Grant</div>
-                <p class="budget-value {% if budget.configured and budget.remaining_travel < 0 %}text-danger{% endif %}">
-                    {% if budget.configured %}{{ budget.remaining_travel_display }}{% else %}—{% endif %}
-                </p>
-                {% if budget.configured %}
-                <div class="budget-progress mt-3" title="{{ budget.spent_travel_display }} approved">
-                    <div class="budget-progress-bar" style="width: {{ budget.travel_used_percent }}%"></div>
-                </div>
-                <div class="budget-meta mt-2">{{ budget.spent_travel_display }} approved</div>
-                {% endif %}
+            <section class="budget-metric approved">
+                <div class="budget-label">Approved Grants</div>
+                <p class="budget-value">{% if budget.configured %}{{ budget.spent_display }}{% else %}—{% endif %}</p>
             </section>
         </div>
-
         <div class="col-md-4">
-            <section class="budget-metric rfg">
-                <div class="budget-label">Assigned Budget – RFG</div>
-                <p class="budget-value">{% if budget.configured %}{{ budget.assigned_rfg_display }}{% else %}—{% endif %}</p>
-                <div class="budget-divider"></div>
-                <div class="budget-label">Budget Remaining – RFG</div>
-                <p class="budget-value {% if budget.configured and budget.remaining_rfg < 0 %}text-danger{% endif %}">
-                    {% if budget.configured %}{{ budget.remaining_rfg_display }}{% else %}—{% endif %}
+            <section class="budget-metric remaining">
+                <div class="budget-label">Remaining Budget</div>
+                <p class="budget-value {% if budget.configured and budget.remaining < 0 %}text-danger{% endif %}">
+                    {% if budget.configured %}{{ budget.remaining_display }}{% else %}—{% endif %}
                 </p>
-                {% if budget.configured %}
-                <div class="budget-progress mt-3" title="{{ budget.spent_rfg_display }} approved">
-                    <div class="budget-progress-bar" style="width: {{ budget.rfg_used_percent }}%"></div>
-                </div>
-                <div class="budget-meta mt-2">{{ budget.spent_rfg_display }} approved</div>
-                {% endif %}
             </section>
         </div>
     </div>
 
-    <section class="budget-total-remaining">
-        <div>
-            <div class="budget-label">Total Budget Remaining</div>
-            {% if budget.configured and budget.updated_at %}
-            <div class="budget-meta mt-1">
+    {% if budget.configured %}
+    <section class="budget-status">
+        <div class="flex-grow-1">
+            <div class="d-flex justify-content-between gap-3 mb-2">
+                <span class="budget-label">Budget Used</span>
+                <span class="budget-meta">{{ budget.spent_display }} approved</span>
+            </div>
+            <div class="budget-progress" title="{{ budget.spent_display }} approved">
+                <div class="budget-progress-bar" style="width: {{ budget.used_percent }}%"></div>
+            </div>
+            {% if budget.updated_at %}
+            <div class="budget-meta mt-3">
                 Last updated by {{ budget.updated_by }} on {{ budget.updated_at }}
             </div>
             {% endif %}
         </div>
-        <p class="budget-value mb-0 {% if budget.configured and budget.total_remaining < 0 %}text-danger{% endif %}">
-            {% if budget.configured %}{{ budget.total_remaining_display }}{% else %}—{% endif %}
-        </p>
     </section>
     {% endif %}
+    {% endif %}
+
+{% else %}
+    {# ── Non-Finance user: read-only overview for all programmes ── #}
+    <div class="budget-heading d-flex align-items-start justify-content-between gap-3 mb-4">
+        <div>
+            <h1 class="budget-page-title mb-2">Budget Overview</h1>
+            <p class="text-muted mb-0">
+                View the current budget status for all programmes.
+            </p>
+        </div>
+    </div>
+
+    {% for entry in budgets %}
+    <div class="mb-5">
+        <h2 class="fw-bold text-dark mb-3" style="font-size:1.2rem;">{{ entry.program_label }}</h2>
+
+        {% if not entry.budget.schema_ready %}
+        <div class="alert alert-warning" role="alert">
+            Budget information for {{ entry.program_label }} is currently unavailable.
+        </div>
+        {% else %}
+        <div class="row g-4 mb-3">
+            <div class="col-md-4">
+                <section class="budget-metric">
+                    <div class="budget-label">Total Budget</div>
+                    <p class="budget-value">{% if entry.budget.configured %}{{ entry.budget.total_display }}{% else %}—{% endif %}</p>
+                </section>
+            </div>
+            <div class="col-md-4">
+                <section class="budget-metric approved">
+                    <div class="budget-label">Approved Grants</div>
+                    <p class="budget-value">{% if entry.budget.configured %}{{ entry.budget.spent_display }}{% else %}—{% endif %}</p>
+                </section>
+            </div>
+            <div class="col-md-4">
+                <section class="budget-metric remaining">
+                    <div class="budget-label">Remaining Budget</div>
+                    <p class="budget-value {% if entry.budget.configured and entry.budget.remaining < 0 %}text-danger{% endif %}">
+                        {% if entry.budget.configured %}{{ entry.budget.remaining_display }}{% else %}—{% endif %}
+                    </p>
+                </section>
+            </div>
+        </div>
+
+        {% if entry.budget.configured %}
+        <section class="budget-status">
+            <div class="flex-grow-1">
+                <div class="d-flex justify-content-between gap-3 mb-2">
+                    <span class="budget-label">Budget Used</span>
+                    <span class="budget-meta">{{ entry.budget.spent_display }} approved</span>
+                </div>
+                <div class="budget-progress" title="{{ entry.budget.spent_display }} approved">
+                    <div class="budget-progress-bar" style="width: {{ entry.budget.used_percent }}%"></div>
+                </div>
+                {% if entry.budget.updated_at %}
+                <div class="budget-meta mt-3">
+                    Last updated by {{ entry.budget.updated_by }} on {{ entry.budget.updated_at }}
+                </div>
+                {% endif %}
+            </div>
+        </section>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endfor %}
+
+{% endif %}
+
 </div>
 {% endblock %}
+

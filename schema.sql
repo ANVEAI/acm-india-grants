@@ -57,6 +57,9 @@ CREATE TABLE public."APPLICATIONS" (
     "UPDATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     "BUDGET_EDITED_AT" timestamp without time zone,
     "BUDGET_EDITED_BY" character varying(255),
+    "DECISION_STATUS" character varying DEFAULT 'Pending'::character varying NOT NULL,
+    "APPROVED_SUPPORT_AMOUNT" numeric,
+    "COMMITTEE_EVALUATION_NOTES" text,
     "EMAIL" character varying(255) NOT NULL,
     "APPLICANT_NAME" character varying(255) NOT NULL,
     "INSTITUTION_NAME" character varying(255) NOT NULL,
@@ -160,8 +163,8 @@ ALTER TABLE public."RFG_DETAILS" OWNER TO postgres;
 
 --
 -- Name: USER_PROGRAM_ROLES; Type: TABLE; Schema: public; Owner: postgres
--- Programme-scoped roles. USERS.ROLE is unchanged and still carries the global
--- 'System Reviewer' user-administration capability, which is not a programme role.
+-- Programme-scoped roles. USERS.ROLE carries account type; Finance is a role
+-- held by one Standard account in one programme.
 --
 
 CREATE TABLE public."USER_PROGRAM_ROLES" (
@@ -173,28 +176,28 @@ CREATE TABLE public."USER_PROGRAM_ROLES" (
     CONSTRAINT "USER_PROGRAM_ROLES_program_chk"
         CHECK (("PROGRAM")::text = ANY (ARRAY['TRAVEL'::text, 'RFG'::text])),
     CONSTRAINT "USER_PROGRAM_ROLES_role_chk"
-        CHECK (("ROLE")::text = ANY (ARRAY['Chairman'::text, 'Reviewer'::text, 'Observer'::text]))
+        CHECK (("ROLE")::text = ANY (ARRAY['Chairman'::text, 'Reviewer'::text, 'Observer'::text, 'Finance'::text]))
 );
 
 ALTER TABLE public."USER_PROGRAM_ROLES" OWNER TO postgres;
 
 --
--- Name: ACM_BUDGET; Type: TABLE; Schema: public; Owner: postgres
--- Stores the single ACM-wide allocation. Programme balances are derived from
--- accepted FINAL_APPROVALS, so they cannot drift from application state.
+-- Name: PROGRAM_BUDGETS; Type: TABLE; Schema: public; Owner: postgres
+-- Stores independent Finance-managed programme allocations. Balances are
+-- derived from accepted FINAL_APPROVALS, so they cannot drift from application state.
 --
 
-CREATE TABLE public."ACM_BUDGET" (
-    "ID" smallint DEFAULT 1 NOT NULL,
+CREATE TABLE public."PROGRAM_BUDGETS" (
+    "PROGRAM" character varying(20) NOT NULL,
     "TOTAL_BUDGET" numeric(15,2) NOT NULL,
     "UPDATED_BY" character varying(255) NOT NULL,
     "UPDATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT "ACM_BUDGET_single_row_chk" CHECK ("ID" = 1),
-    CONSTRAINT "ACM_BUDGET_total_nonnegative_chk" CHECK ("TOTAL_BUDGET" >= 0),
-    CONSTRAINT "ACM_BUDGET_pkey" PRIMARY KEY ("ID")
+    CONSTRAINT "PROGRAM_BUDGETS_program_chk" CHECK ("PROGRAM" IN ('TRAVEL', 'RFG')),
+    CONSTRAINT "PROGRAM_BUDGETS_total_nonnegative_chk" CHECK ("TOTAL_BUDGET" >= 0),
+    CONSTRAINT "PROGRAM_BUDGETS_pkey" PRIMARY KEY ("PROGRAM")
 );
 
-ALTER TABLE public."ACM_BUDGET" OWNER TO postgres;
+ALTER TABLE public."PROGRAM_BUDGETS" OWNER TO postgres;
 
 --
 -- TOC entry 222 (class 1259 OID 21054)
@@ -1371,14 +1374,20 @@ ALTER TABLE public."APPLICATIONS"
     ADD COLUMN IF NOT EXISTS "BUDGET_EDITED_AT" timestamp without time zone;
 ALTER TABLE public."APPLICATIONS"
     ADD COLUMN IF NOT EXISTS "BUDGET_EDITED_BY" character varying(255);
+ALTER TABLE public."APPLICATIONS"
+    ADD COLUMN IF NOT EXISTS "DECISION_STATUS" character varying DEFAULT 'Pending'::character varying NOT NULL;
+ALTER TABLE public."APPLICATIONS"
+    ADD COLUMN IF NOT EXISTS "APPROVED_SUPPORT_AMOUNT" numeric;
+ALTER TABLE public."APPLICATIONS"
+    ADD COLUMN IF NOT EXISTS "COMMITTEE_EVALUATION_NOTES" text;
 
--- System Reviewer-managed ACM allocation. Re-runnable for existing databases.
-CREATE TABLE IF NOT EXISTS public."ACM_BUDGET" (
-    "ID" smallint DEFAULT 1 NOT NULL,
+-- Finance-managed programme allocations. Re-runnable for existing databases.
+CREATE TABLE IF NOT EXISTS public."PROGRAM_BUDGETS" (
+    "PROGRAM" character varying(20) NOT NULL,
     "TOTAL_BUDGET" numeric(15,2) NOT NULL,
     "UPDATED_BY" character varying(255) NOT NULL,
     "UPDATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT "ACM_BUDGET_single_row_chk" CHECK ("ID" = 1),
-    CONSTRAINT "ACM_BUDGET_total_nonnegative_chk" CHECK ("TOTAL_BUDGET" >= 0),
-    CONSTRAINT "ACM_BUDGET_pkey" PRIMARY KEY ("ID")
+    CONSTRAINT "PROGRAM_BUDGETS_program_chk" CHECK ("PROGRAM" IN ('TRAVEL', 'RFG')),
+    CONSTRAINT "PROGRAM_BUDGETS_total_nonnegative_chk" CHECK ("TOTAL_BUDGET" >= 0),
+    CONSTRAINT "PROGRAM_BUDGETS_pkey" PRIMARY KEY ("PROGRAM")
 );

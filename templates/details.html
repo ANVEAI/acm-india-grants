@@ -427,15 +427,36 @@
                             <label class="text-muted small fw-bold d-block mb-1">Budget Justification</label>
                             <p class="fw-500 text-dark" style="line-height: 1.6;">{{ application.budget_justification }}</p>
                         </div>
-                        {% if approved_amount %}
                         <div class="col-md-6 mb-3">
-                            <label class="text-muted small fw-bold d-block mb-1">Approved Amount</label>
-                            <p class="fw-500 text-dark fs-5">
-                                ₹{{ approved_amount }}
-                                <span class="text-success small">(Approved)</span>
+                            <label class="text-muted small fw-bold d-block mb-1">Decision Status</label>
+                            <p class="fw-500 text-dark">
+                                {% if application.decision_status == 'Approved' %}
+                                <span class="badge bg-success">Approved</span>
+                                {% elif application.decision_status == 'Rejected' %}
+                                <span class="badge bg-danger">Rejected</span>
+                                {% elif application.decision_status == 'Archived' %}
+                                <span class="badge bg-secondary">Archived</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">Pending</span>
+                                {% endif %}
                             </p>
                         </div>
-                        {% endif %}
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Approved Support Amount</label>
+                            <p class="fw-500 text-dark fs-5">
+                                {% if application.decision_status == 'Approved' and application.approved_support_amount %}
+                                ₹{{ application.approved_support_amount }}
+                                {% elif application.decision_status == 'Approved' and approved_amount %}
+                                ₹{{ approved_amount }}
+                                {% else %}
+                                —
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="text-muted small fw-bold d-block mb-1">Committee Evaluation Notes</label>
+                            <p class="fw-500 text-dark" style="line-height: 1.6;">{{ application.committee_evaluation_notes|default:"—" }}</p>
+                        </div>
                         <div class="col-md-6 mb-3">
                             <label class="text-muted small fw-bold d-block mb-1">Availed an IARCS-ACMI Grant Before?</label>
                             <p class="fw-500 text-dark">
@@ -475,15 +496,34 @@
                             {% csrf_token %}
                             <div class="row">
                                 <div class="col-md-6 mb-3">
-                                    <label for="travelBudget" class="form-label fw-bold">Travel Budget (₹)</label>
-                                    <input id="travelBudget" type="number" name="travel_budget"
-                                           class="form-control" min="0.01" max="99999999.99" step="0.01"
-                                           value="{{ application.travel_budget }}" required>
+                                    <label for="decisionStatus" class="form-label fw-bold">Decision Status</label>
+                                    <select id="decisionStatus" name="decision_status" class="form-select">
+                                        <option value="Pending" {% if application.decision_status == 'Pending' or not application.decision_status %}selected{% endif %}>Pending</option>
+                                        <option value="Approved" {% if application.decision_status == 'Approved' %}selected{% endif %}>Approved</option>
+                                        <option value="Rejected" {% if application.decision_status == 'Rejected' %}selected{% endif %}>Rejected</option>
+                                        <option value="Archived" {% if application.decision_status == 'Archived' %}selected{% endif %}>Archived</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="approvedSupportAmount" class="form-label fw-bold">Approved Support Amount (₹)</label>
+                                    <input id="approvedSupportAmount" type="number" name="approved_support_amount"
+                                           class="form-control" min="0.01" {% if program == 'TRAVEL' %}max="100000"{% elif program == 'RFG' %}max="{{ rfg_cap }}"{% endif %} step="0.01"
+                                           value="{% if application.decision_status == 'Approved' %}{% if application.approved_support_amount %}{{ application.approved_support_amount }}{% elif approved_amount %}{{ approved_amount }}{% endif %}{% endif %}"
+                                           placeholder="Enter approved amount"
+                                           {% if application.decision_status != 'Approved' %}disabled{% endif %}>
+                                    <small id="approvedSupportAmountHelp" class="text-muted">
+                                        {% if application.decision_status == 'Approved' %}
+                                        Modify the amount approved by the Chairman.
+                                        {% else %}
+                                        Enter approved amount when status is set to Approved.
+                                        {% endif %}
+                                    </small>
                                 </div>
                                 <div class="col-12 mb-3">
-                                    <label for="budgetJustification" class="form-label fw-bold">Budget Justification</label>
-                                    <textarea id="budgetJustification" name="budget_justification"
-                                              class="form-control" rows="3" required>{{ application.budget_justification }}</textarea>
+                                    <label for="committeeEvaluationNotes" class="form-label fw-bold">Committee Evaluation Notes</label>
+                                    <textarea id="committeeEvaluationNotes" name="committee_evaluation_notes"
+                                              class="form-control" rows="3"
+                                              placeholder="Enter committee evaluation notes or comments">{{ application.committee_evaluation_notes|default:'' }}</textarea>
                                 </div>
                             </div>
                             <div class="d-flex justify-content-end gap-2">
@@ -565,7 +605,7 @@
 
                 {% if application.status != "Rejected" %}
                     <!-- RIGHT: FINAL APPROVAL DETAILS -->
-                    {% if final_approval %}
+                    {% if application.status == "Accepted" and final_approval %}
                     <div class="col-md-6">
                         <div class="card shadow-sm border-0 h-100 border-success">
                             <div class="card-header bg-success text-white">
@@ -655,11 +695,13 @@
                                         RFG approvals cannot exceed ₹{{ rfg_cap }}.
                                     </small>
                                     {% else %}
-                                    <select name="amount" class="form-select" required>
-                                        <option value="" disabled selected>Select amount</option>
-                                        <option value="60000">₹60,000</option>
-                                        <option value="100000">₹1,00,000</option>
-                                    </select>
+                                    <input type="number" name="amount" class="form-control"
+                                           min="0.01" max="100000" step="0.01" required
+                                           placeholder="Enter amount (up to ₹1,00,000)">
+                                    <small class="text-muted">
+                                        Requested ₹{{ application.travel_budget }}.
+                                        Maximum approval amount is ₹1,00,000.
+                                    </small>
                                     {% endif %}
                                 </div>
 
@@ -742,5 +784,49 @@
         background: linear-gradient(135deg, #36d06d 0%, #30c4c0 100%);
     }
 </style>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const statusSelect = document.getElementById('decisionStatus');
+    const amountInput = document.getElementById('approvedSupportAmount');
+    const amountHelp = document.getElementById('approvedSupportAmountHelp');
+    
+    if (statusSelect && amountInput) {
+        let storedAmount = amountInput.value;
+        
+        statusSelect.addEventListener('change', function() {
+            if (this.value !== 'Approved') {
+                if (amountInput.value) {
+                    storedAmount = amountInput.value;
+                }
+                amountInput.value = '';
+                amountInput.setAttribute('disabled', 'disabled');
+                if (amountHelp) {
+                    amountHelp.textContent = 'Approved support amount is cleared because status is ' + this.value + '.';
+                }
+            } else {
+                amountInput.removeAttribute('disabled');
+                if (!amountInput.value && storedAmount) {
+                    amountInput.value = storedAmount;
+                }
+                if (amountHelp) {
+                    amountHelp.textContent = 'Modify the amount approved by the Chairman.';
+                }
+            }
+        });
+        
+        const form = statusSelect.closest('form');
+        if (form) {
+            form.addEventListener('submit', function() {
+                if (statusSelect.value !== 'Approved') {
+                    amountInput.removeAttribute('disabled');
+                    amountInput.value = '';
+                }
+            });
+        }
+    }
+});
+</script>
 
 {% endblock %}

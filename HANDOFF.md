@@ -135,7 +135,7 @@ Four accounts exist in `"USERS"`, all created before this engagement, password `
 | reviewer2@example.com | Reviewer |
 | k@example.com | Reviewer (status: Inactive, cannot log in) |
 
-Roles: **Chairman** (final approve/reject, sets amount), **Reviewer** (submits ratings/feedback), **System Reviewer** (user administration only — add/edit users; does **not** participate in the review workflow and cannot submit reviews).
+Roles: **Chairman** (final approve/reject, sets amount), **Reviewer** (submits ratings/feedback), **Observer** (read-only), **Finance** (read-only application access plus budget management for one programme), and **System Reviewer** (user administration only — add/edit users; does **not** participate in the review workflow). The two Finance users are the Standard accounts `tg-finance` for Travel and `rfg-finance` for RFG.
 
 ---
 
@@ -249,9 +249,10 @@ null `PAPER_TITLE` is still rejected by the database. Do not drop that constrain
 ### Permissions are programme-scoped
 
 `USER_PROGRAM_ROLES` (`USER_ID`, `PROGRAM`, `ROLE`) holds at most one role per
-user per programme: `Chairman` | `Reviewer` | `Observer`. `USERS.ROLE` is
-**unchanged** and still carries the global `System Reviewer` user-administration
-capability, which is not a programme role.
+user per programme: `Chairman` | `Reviewer` | `Observer` | `Finance`. `USERS.ROLE`
+only distinguishes the global `System Reviewer` account type from a Standard
+account (stored using the legacy value `Reviewer`). Finance is therefore a
+programme role, not an account type.
 
 `home/permissions.py` is the single source of truth — `can_view`, `can_review`,
 `can_decide`, `can_notify`, `visible_programs`. There are **no** global
@@ -274,8 +275,14 @@ rejection and notification. Verified at the view layer, not just in templates.
 
 **Assigning roles is done in `/profile/`, not in SQL.** Both the add-user form and
 each row of the user table carry a Travel select and an RFG select, set
-independently; an empty value clears access. The legacy Account Type field now only
-distinguishes a standard account from a System Reviewer.
+independently; an empty value clears access. Account Type distinguishes only a
+Standard account from System Reviewer. Finance uses the fixed usernames
+`tg-finance` and `rfg-finance`; each receives `Finance` only for its own programme,
+can read that programme's applications, cannot review/decide/edit/notify, and
+manages only its own row in `PROGRAM_BUDGETS`. Apply
+`budget_management_schema.sql` to upgrade an existing database; it also converts
+the earlier two Finance account types and safely carries forward each half of the
+legacy ACM-wide allocation.
 
 Two traps worth knowing about, both hit in practice:
 

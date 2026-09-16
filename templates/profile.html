@@ -3,6 +3,90 @@
 
 {% block title %}My Profile{% endblock %}
 
+{% block extra_css %}
+<style>
+/* Keep the user editor readable without changing the table's structure. */
+.user-table-card .card-body {
+    min-width: 0;
+}
+
+.user-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+}
+
+.user-management-table {
+    width: 100%;
+    min-width: 1435px;
+    margin-bottom: 0;
+    table-layout: fixed;
+    font-size: 0.78rem;
+}
+
+.user-management-table th {
+    padding: 0.65rem 0.55rem;
+    vertical-align: middle;
+    white-space: nowrap;
+    font-size: 0.68rem;
+    letter-spacing: 0.015em;
+}
+
+.user-management-table td {
+    padding: 0.65rem 0.55rem;
+    vertical-align: middle;
+}
+
+.user-management-table .form-control,
+.user-management-table .form-select {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    padding: 0.42rem 0.5rem;
+    font-size: 0.78rem;
+    line-height: 1.25;
+}
+
+.user-management-table .form-select {
+    padding-right: 1.8rem;
+}
+
+.user-management-table .badge,
+.user-management-table .btn {
+    white-space: nowrap;
+    font-size: 0.67rem;
+}
+
+.user-management-table .account-type {
+    overflow-wrap: anywhere;
+}
+
+.add-user-autofill-trap {
+    position: absolute !important;
+    left: -10000px !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+}
+
+@media (max-width: 767.98px) {
+    .user-table-card .card-body {
+        padding: 1rem !important;
+    }
+
+    .user-table-help {
+        font-size: 0.75rem !important;
+        line-height: 1.5;
+    }
+
+    .user-table-wrap {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.4rem;
+    }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="main-content">
 <div class="container-fluid">
@@ -110,86 +194,123 @@ Change Photo
 
 <!-- ================= ADD USER (System Reviewer only) ================= -->
 {% if user_role == "System Reviewer" %}
-<div class="card shadow-sm border-0 mb-4">
+<div class="card shadow-sm border-0 mb-4" id="add-new-user">
 <div class="card-header fw-bold">Add New User</div>
 <div class="card-body p-4">
 
-<form method="POST" enctype="multipart/form-data">
+<form method="POST" enctype="multipart/form-data" action="{% url 'profile' %}#add-new-user" autocomplete="off">
 {% csrf_token %}
 <input type="hidden" name="add_user" value="1">
 
+{# Capture browser password-manager autofill away from the real blank fields. #}
+<div class="add-user-autofill-trap" aria-hidden="true">
+    <input type="text" name="login_username" autocomplete="username" tabindex="-1">
+    <input type="password" name="login_password" autocomplete="current-password" tabindex="-1">
+</div>
+
 <div class="row mb-3">
 <div class="col-md-6">
-<label class="fw-bold">Name *</label>
-<input type="text" class="form-control" name="new_name" required>
+<label class="fw-bold" for="new_name">Name *</label>
+<input type="text" id="new_name" class="form-control {% if add_user_errors.new_name %}is-invalid{% endif %}"
+       name="new_name" value="{{ add_user_values.new_name|default:'' }}"
+       minlength="2" maxlength="100" autocomplete="off" required>
+{% if add_user_errors.new_name %}<div class="invalid-feedback">{{ add_user_errors.new_name }}</div>{% endif %}
 </div>
 <div class="col-md-6">
-<label class="fw-bold">Username *</label>
-<input type="text" class="form-control" name="new_username" required>
+<label class="fw-bold" for="new_username">Username *</label>
+<input type="text" id="new_username" class="form-control {% if add_user_errors.new_username %}is-invalid{% endif %}"
+       name="new_username" value="{{ add_user_values.new_username|default:'' }}"
+       minlength="3" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{1,62}[A-Za-z0-9]"
+       title="Use 3-64 letters, numbers, periods, underscores or hyphens; start and end with a letter or number."
+       autocomplete="off" required>
+{% if add_user_errors.new_username %}<div class="invalid-feedback">{{ add_user_errors.new_username }}</div>{% endif %}
 </div>
 </div>
 
 <div class="row mb-3">
 <div class="col-md-6">
-<label class="fw-bold">Email *</label>
-<input type="email" class="form-control" name="new_email" required>
+<label class="fw-bold" for="new_email">Email *</label>
+<input type="email" id="new_email" class="form-control {% if add_user_errors.new_email %}is-invalid{% endif %}"
+       name="new_email" value="{{ add_user_values.new_email|default:'' }}"
+       maxlength="150" autocomplete="off" required>
+{% if add_user_errors.new_email %}<div class="invalid-feedback">{{ add_user_errors.new_email }}</div>{% endif %}
 </div>
 <div class="col-md-6">
-<label class="fw-bold">Phone Number</label>
-<input type="text" class="form-control" name="new_mobile" maxlength="10" placeholder="10 digit mobile number">
+<label class="fw-bold" for="new_mobile">Phone Number</label>
+<input type="text" id="new_mobile" class="form-control {% if add_user_errors.new_mobile %}is-invalid{% endif %}"
+       name="new_mobile" value="{{ add_user_values.new_mobile|default:'' }}"
+       minlength="10" maxlength="10" pattern="[0-9]{10}" inputmode="numeric"
+       title="Enter exactly 10 digits." autocomplete="off" placeholder="10 digit mobile number">
+{% if add_user_errors.new_mobile %}<div class="invalid-feedback">{{ add_user_errors.new_mobile }}</div>{% endif %}
 </div>
 </div>
 
 <div class="row mb-3">
 <div class="col-md-6">
-<label class="fw-bold">Account Type *</label>
-<select class="form-select" name="new_role" required>
-    <option value="">Select</option>
-    <option value="Reviewer">Standard account</option>
-    <option value="System Reviewer">System Reviewer (manages users)</option>
+<label class="fw-bold" for="new_role">Account Type *</label>
+<select id="new_role" class="form-select {% if add_user_errors.new_role %}is-invalid{% endif %}"
+        name="new_role" autocomplete="off" required>
+    <option value="" disabled {% if not add_user_values.new_role %}selected{% endif %}>Select account type</option>
+    <option value="Reviewer" {% if add_user_values.new_role == "Reviewer" %}selected{% endif %}>Standard account</option>
+    <option value="System Reviewer" {% if add_user_values.new_role == "System Reviewer" %}selected{% endif %}>System Reviewer (manages users)</option>
 </select>
+{% if add_user_errors.new_role %}<div class="invalid-feedback">{{ add_user_errors.new_role }}</div>{% endif %}
 <small class="text-muted">
-    Only System Reviewer can manage users. It can view every application but
-    cannot review, decide or notify.
+    Standard accounts receive their programme role below. System Reviewer manages users.
 </small>
 </div>
 <div class="col-md-6">
-<label class="fw-bold">Photo</label>
-<input type="file" class="form-control" name="new_photo" accept="image/*">
+<label class="fw-bold" for="new_photo">Photo</label>
+<input type="file" id="new_photo" class="form-control {% if add_user_errors.new_photo %}is-invalid{% endif %}"
+       name="new_photo" accept=".jpg,.jpeg,.png,.gif,.webp"
+       data-max-bytes="{{ add_user_photo_max_bytes }}"
+       data-max-mb="{{ add_user_photo_max_mb }}">
+{% if add_user_errors.new_photo %}<div class="invalid-feedback">{{ add_user_errors.new_photo }}</div>{% endif %}
+<small class="text-muted">JPG, PNG, GIF or WebP, up to {{ add_user_photo_max_mb }} MB.</small>
 </div>
 </div>
 
 <div class="row mb-3">
 <div class="col-md-6">
-<label class="fw-bold">Travel Support access</label>
-<select class="form-select" name="new_travel_role">
-    <option value="">No access</option>
+<label class="fw-bold" for="new_travel_role">Travel Support access *</label>
+<select id="new_travel_role" class="form-select {% if add_user_errors.new_travel_role %}is-invalid{% endif %}"
+        name="new_travel_role" autocomplete="off" required>
+    <option value="" disabled {% if not add_user_values.new_travel_role %}selected{% endif %}>Select access</option>
+    <option value="NONE" {% if add_user_values.new_travel_role == "NONE" %}selected{% endif %}>No access</option>
     {% for choice in program_role_choices %}
-    <option value="{{ choice }}">{{ choice }}</option>
+    <option value="{{ choice }}" {% if add_user_values.new_travel_role == choice %}selected{% endif %}>{{ choice }}</option>
     {% endfor %}
 </select>
+{% if add_user_errors.new_travel_role %}<div class="invalid-feedback">{{ add_user_errors.new_travel_role }}</div>{% endif %}
 </div>
 <div class="col-md-6">
-<label class="fw-bold">Research Facilitation Grant access</label>
-<select class="form-select" name="new_rfg_role">
-    <option value="">No access</option>
+<label class="fw-bold" for="new_rfg_role">Research Facilitation Grant access *</label>
+<select id="new_rfg_role" class="form-select {% if add_user_errors.new_rfg_role %}is-invalid{% endif %}"
+        name="new_rfg_role" autocomplete="off" required>
+    <option value="" disabled {% if not add_user_values.new_rfg_role %}selected{% endif %}>Select access</option>
+    <option value="NONE" {% if add_user_values.new_rfg_role == "NONE" %}selected{% endif %}>No access</option>
     {% for choice in program_role_choices %}
-    <option value="{{ choice }}">{{ choice }}</option>
+    <option value="{{ choice }}" {% if add_user_values.new_rfg_role == choice %}selected{% endif %}>{{ choice }}</option>
     {% endfor %}
 </select>
+{% if add_user_errors.new_rfg_role %}<div class="invalid-feedback">{{ add_user_errors.new_rfg_role }}</div>{% endif %}
 </div>
 <div class="col-12">
 <small class="text-muted">
     Set independently &mdash; a person can hold a different role in each programme,
     or none. Reviewer rates and comments; Chairman approves, rejects and notifies;
-    Observer views only.
+    Observer views only. Finance views applications read-only and manages the budget.
+    Finance is reserved for <strong>tg-finance</strong> under Travel or
+    <strong>rfg-finance</strong> under RFG, with no access to the other programme.
 </small>
 </div>
 </div>
 
 <div class="mb-3">
-<label class="fw-bold">Password *</label>
-<input type="password" class="form-control" name="new_password" required>
+<label class="fw-bold" for="new_password">Password *</label>
+<input type="password" id="new_password" class="form-control {% if add_user_errors.new_password %}is-invalid{% endif %}"
+       name="new_password" autocomplete="new-password" required>
+{% if add_user_errors.new_password %}<div class="invalid-feedback">{{ add_user_errors.new_password }}</div>{% endif %}
 </div>
 
 <div class="text-end">
@@ -200,22 +321,38 @@ Change Photo
 </div>
 
 <!-- ================= ALL USERS TABLE ================= -->
-<div class="card shadow-sm border-0 mb-4">
+<div class="card shadow-sm border-0 mb-4 user-table-card">
 <div class="card-header fw-bold">All Users</div>
 <div class="card-body p-4">
-<p class="text-muted small mb-3">
+<p class="text-muted small mb-3 user-table-help">
     <strong>Travel</strong> and <strong>RFG</strong> are set independently and take effect
     immediately &mdash; the user does not need to log in again.
     <strong>Reviewer</strong> rates and comments and can send the &ldquo;Under Review&rdquo;
     notification. <strong>Chairman</strong> also approves, rejects and sends decisions.
-    <strong>Observer</strong> views only. <strong>No access</strong> hides that
+    <strong>Observer</strong> views only. <strong>Finance</strong> is read-only and
+    manages only its programme budget. <strong>No access</strong> hides that
     programme&rsquo;s applications entirely.
 </p>
-<table class="table table-bordered table-striped">
+<div class="table-responsive user-table-wrap" tabindex="0" aria-label="All users table; scroll horizontally to view every field">
+<table class="table table-bordered table-striped user-management-table">
+<colgroup>
+<col style="width: 52px;">
+<col style="width: 150px;">
+<col style="width: 145px;">
+<col style="width: 220px;">
+<col style="width: 125px;">
+<col style="width: 155px;">
+<col style="width: 125px;">
+<col style="width: 125px;">
+<col style="width: 105px;">
+<col style="width: 145px;">
+<col style="width: 88px;">
+</colgroup>
 <thead>
 <tr>
 <th>ID</th>
 <th>Name</th>
+<th>Username</th>
 <th>Email</th>
 <th>Phone</th>
 <th>Account Type</th>
@@ -229,11 +366,13 @@ Change Photo
 <tbody>
 {% for u in all_users %}
 <tr>
-<td>{{ u.id }}</td>
-<td>{{ u.name }}<div class="text-muted small">{{ u.username }}</div></td>
-<td>{{ u.email }}</td>
+<td>{{ forloop.counter }}</td>
+<td><input type="text" form="urow{{ u.id }}" name="update_name" class="form-control" value="{{ u.name }}" maxlength="100" required></td>
+<td><input type="text" form="urow{{ u.id }}" name="update_username" class="form-control" value="{{ u.username }}" maxlength="64" required
+           {% if u.travel_role == "Finance" or u.rfg_role == "Finance" %}readonly aria-readonly="true" title="Finance usernames are fixed for access control."{% endif %}></td>
+<td><input type="email" form="urow{{ u.id }}" name="update_email" class="form-control" value="{{ u.email }}" maxlength="150" required></td>
 <td><input type="text" form="urow{{ u.id }}" name="update_mobile" class="form-control" value="{{ u.mobile_no }}"></td>
-<td>
+<td class="account-type">
     {% if u.role == "System Reviewer" %}
     <span class="badge bg-dark">System Reviewer</span>
     {% else %}
@@ -268,9 +407,12 @@ Change Photo
 {% endfor %}
 </tbody>
 </table>
+</div>
 
-{# One form per user, outside the table so the markup is valid. Each row's
-   controls point at their own form via the HTML form="" attribute. #}
+{% comment %}
+One form per user, outside the table so the markup is valid. Each row's
+controls point at their own form via the HTML form="" attribute.
+{% endcomment %}
 {% for u in all_users %}
 <form id="urow{{ u.id }}" method="POST">
     {% csrf_token %}
@@ -304,6 +446,28 @@ document.addEventListener("DOMContentLoaded", function () {
             this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10);
         });
     });
+
+    const newPhotoInput = document.getElementById("new_photo");
+    if (newPhotoInput) {
+        newPhotoInput.addEventListener("change", function () {
+            this.setCustomValidity("");
+            const photo = this.files[0];
+            if (!photo) return;
+
+            const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+            const maxBytes = Number(this.dataset.maxBytes);
+            const maxMb = this.dataset.maxMb;
+
+            if (!allowedTypes.includes(photo.type)) {
+                this.setCustomValidity("Upload a valid JPG, PNG, GIF or WebP image.");
+            } else if (maxBytes && photo.size > maxBytes) {
+                this.setCustomValidity(`Photo size cannot exceed ${maxMb} MB.`);
+            }
+
+            if (!this.checkValidity()) this.reportValidity();
+        });
+    }
+
 });
 </script>
 {% endblock %}
