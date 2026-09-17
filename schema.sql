@@ -57,7 +57,7 @@ CREATE TABLE public."APPLICATIONS" (
     "UPDATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     "BUDGET_EDITED_AT" timestamp without time zone,
     "BUDGET_EDITED_BY" character varying(255),
-    "DECISION_STATUS" character varying DEFAULT 'Pending'::character varying NOT NULL,
+    "DECISION_STATUS" character varying DEFAULT 'Drafted'::character varying NOT NULL,
     "APPROVED_SUPPORT_AMOUNT" numeric,
     "COMMITTEE_EVALUATION_NOTES" text,
     "EMAIL" character varying(255) NOT NULL,
@@ -1375,7 +1375,7 @@ ALTER TABLE public."APPLICATIONS"
 ALTER TABLE public."APPLICATIONS"
     ADD COLUMN IF NOT EXISTS "BUDGET_EDITED_BY" character varying(255);
 ALTER TABLE public."APPLICATIONS"
-    ADD COLUMN IF NOT EXISTS "DECISION_STATUS" character varying DEFAULT 'Pending'::character varying NOT NULL;
+    ADD COLUMN IF NOT EXISTS "DECISION_STATUS" character varying DEFAULT 'Drafted'::character varying NOT NULL;
 ALTER TABLE public."APPLICATIONS"
     ADD COLUMN IF NOT EXISTS "APPROVED_SUPPORT_AMOUNT" numeric;
 ALTER TABLE public."APPLICATIONS"
@@ -1391,3 +1391,20 @@ CREATE TABLE IF NOT EXISTS public."PROGRAM_BUDGETS" (
     CONSTRAINT "PROGRAM_BUDGETS_total_nonnegative_chk" CHECK ("TOTAL_BUDGET" >= 0),
     CONSTRAINT "PROGRAM_BUDGETS_pkey" PRIMARY KEY ("PROGRAM")
 );
+
+-- Per-reviewer evaluations, suggestions, and application open state tracking.
+CREATE TABLE IF NOT EXISTS public."REVIEWER_EVALUATIONS" (
+    "ID" bigserial PRIMARY KEY,
+    "APPLICATION_ID" bigint NOT NULL,
+    "USER_ID" bigint NOT NULL,
+    "OPENED_AT" timestamp without time zone,
+    "SUGGESTED_AMOUNT" numeric(12, 2),
+    "COMMITTEE_EVALUATION_NOTES" text,
+    "DECISION_STATUS" character varying(50),
+    "CREATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    "UPDATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "REVIEWER_EVALUATIONS_app_user_uniq" UNIQUE ("APPLICATION_ID", "USER_ID"),
+    CONSTRAINT "REVIEWER_EVALUATIONS_user_fk" FOREIGN KEY ("USER_ID") REFERENCES "USERS"("ID") ON DELETE CASCADE,
+    CONSTRAINT "REVIEWER_EVALUATIONS_app_fk" FOREIGN KEY ("APPLICATION_ID") REFERENCES "APPLICATIONS"("ID") ON DELETE CASCADE
+);
+

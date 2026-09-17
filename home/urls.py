@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/get-application-details/', views.get_application_details_api, name='get_application_details_api'),
     path('application-details/<str:tracking_code>/', views.application_details_by_tracking, name='application_details_by_tracking'),
     path("application/<int:app_id>/submit-review/", views.submit_review, name="submit_review"),
+    path("application/<int:app_id>/save-reviewer-evaluation/", views.save_reviewer_evaluation, name="save_reviewer_evaluation"),
     path("application/<int:app_id>/submit-final-approval/", views.submit_final_approval, name="submit_final_approval"),
     path('notify-applicant/<int:app_id>/', views.notify_applicant, name='notify_applicant'),
     path('applications/<int:app_id>/reject/', views.reject_application, name='reject_application'),
@@ -22,3 +23,4 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('profile/', views.profile_update, name='profile'),
 ]
+

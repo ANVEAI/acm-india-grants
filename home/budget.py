@@ -52,7 +52,7 @@ def approved_spending(cursor, *, exclude_application_id=None):
             ORDER BY fa."CREATED_AT" DESC NULLS LAST, fa."ID" DESC
             LIMIT 1
         ) current_approval ON TRUE
-        WHERE a."STATUS" = 'Accepted'
+        WHERE a."STATUS" IN ('Accepted', 'Approved')
           AND a."PROGRAM" IN ('TRAVEL', 'RFG')
           {excluded}
         GROUP BY a."PROGRAM"

@@ -36,12 +36,18 @@
         <div>
             <span class="text-muted small fw-bold me-2">Status:</span>
             <span class="badge fs-6 px-3 py-2
-                {% if application.status == 'SUBMITTED' %}bg-secondary
-                {% elif application.status == 'Under Review' %}bg-warning text-dark
-                {% elif application.status == 'Accepted' %}bg-success
-                {% elif application.status == 'Rejected' %}bg-danger
+                {% if application.status == 'SUBMITTED' or application.status == 'Drafted' %}bg-secondary
+                {% elif application.status == 'Under Review' or application.status == 'Pending' %}bg-warning text-dark
+                {% elif application.status == 'Accepted' or application.status == 'Approved' %}bg-success
+                {% elif application.status == 'Rejected' or application.status == 'Not Selected' %}bg-danger
                 {% else %}bg-info{% endif %}">
-                {{ application.status }}
+                {% if application.status_display %}
+                    {{ application.status_display }}
+                {% elif application.status == 'SUBMITTED' %}Drafted
+                {% elif application.status == 'Under Review' %}Pending
+                {% elif application.status == 'Accepted' %}Approved
+                {% elif application.status == 'Rejected' %}Not Selected
+                {% else %}{{ application.status }}{% endif %}
             </span>
         </div>
 
@@ -59,25 +65,27 @@
 {% endif %}
 
 <!-- Rejection reason: previously only visible on the dashboard -->
-{% if application.status == "Rejected" and application.rejection_reason %}
+{% if application.status == "Rejected" or application.status == "Not Selected" %}
+{% if application.rejection_reason %}
 <div class="alert alert-danger d-flex align-items-start gap-2 mb-4" role="alert">
     <i class="feather-x-circle mt-1"></i>
     <div>
-        <strong class="d-block mb-1">Rejection Reason</strong>
+        <strong class="d-block mb-1">Reason for Not Selected</strong>
         {{ application.rejection_reason }}
     </div>
 </div>
 {% endif %}
+{% endif %}
 
 <!-- Notification state. The decision is held as a draft until the Chairman
      explicitly sends it, so make the current state unambiguous. -->
-{% if user_role and application.status != "SUBMITTED" %}
-    {% if application.notified_status == application.status %}
+{% if user_role and application.status != "SUBMITTED" and application.status != "Drafted" %}
+    {% if application.notified_status == application.status or application.notified_status_display and application.notified_status_display == application.status_display %}
     <div class="alert alert-secondary d-flex align-items-center gap-2 mb-4" role="alert">
         <i class="feather-check-circle"></i>
         <div>
             Applicant was notified of this decision
-            ({{ application.notified_status }}) on {{ application.notified_at }}.
+            ({{ application.notified_status_display|default:application.notified_status }}) on {{ application.notified_at }}.
         </div>
     </div>
     {% else %}
@@ -87,9 +95,9 @@
             <i class="feather-alert-triangle"></i>
             <div>
                 <strong>Not sent to the applicant yet.</strong>
-                This decision ({{ application.status }}) is a draft until it is sent.
+                This decision ({{ application.status_display|default:application.status }}) is a draft until it is sent.
                 {% if not can_notify %}
-                    {% if application.status == "Under Review" %}
+                    {% if application.status == "Under Review" or application.status == "Pending" %}
                     <span class="d-block small">Only the Chairman or a Reviewer can send this notification.</span>
                     {% else %}
                     <span class="d-block small">Only the Chairman can send this one.</span>
@@ -218,7 +226,7 @@
             <!-- RFG Details -->
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header py-3"
-                     style="background: linear-gradient(135deg, #111827 0%, #374151 100%); color: #ffffff;">
+                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff;">
                     <h5 class="mb-0 fw-bold">
                         <i class="feather-award me-2" style="color: #ffffff;"></i>Research Facilitation Grant
                     </h5>
@@ -405,7 +413,7 @@
                     <h5 class="mb-0 fw-bold">
                         <i class="feather-dollar-sign me-2" style="color: #ffffff;"></i>Budget Details
                     </h5>
-                    {% if can_edit_budget %}
+                    {% if can_edit_budget_details %}
                     <button type="button" class="btn btn-sm btn-light"
                             data-bs-toggle="collapse" data-bs-target="#budgetEditForm"
                             aria-expanded="false" aria-controls="budgetEditForm">
@@ -432,12 +440,12 @@
                             <p class="fw-500 text-dark">
                                 {% if application.decision_status == 'Approved' %}
                                 <span class="badge bg-success">Approved</span>
-                                {% elif application.decision_status == 'Rejected' %}
-                                <span class="badge bg-danger">Rejected</span>
-                                {% elif application.decision_status == 'Archived' %}
-                                <span class="badge bg-secondary">Archived</span>
-                                {% else %}
+                                {% elif application.decision_status == 'Rejected' or application.decision_status == 'Not Selected' %}
+                                <span class="badge bg-danger">Not Selected</span>
+                                {% elif application.decision_status == 'Pending' or application.decision_status == 'Under Review' %}
                                 <span class="badge bg-warning text-dark">Pending</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Drafted</span>
                                 {% endif %}
                             </p>
                         </div>
@@ -448,15 +456,19 @@
                                 ₹{{ application.approved_support_amount }}
                                 {% elif application.decision_status == 'Approved' and approved_amount %}
                                 ₹{{ approved_amount }}
+                                {% elif application.decision_status == 'Approved' and final_approval and final_approval.amount %}
+                                ₹{{ final_approval.amount }}
                                 {% else %}
                                 —
                                 {% endif %}
                             </p>
                         </div>
+                        {% if not is_student and user_role %}
                         <div class="col-12 mb-3">
                             <label class="text-muted small fw-bold d-block mb-1">Committee Evaluation Notes</label>
                             <p class="fw-500 text-dark" style="line-height: 1.6;">{{ application.committee_evaluation_notes|default:"—" }}</p>
                         </div>
+                        {% endif %}
                         <div class="col-md-6 mb-3">
                             <label class="text-muted small fw-bold d-block mb-1">Availed an IARCS-ACMI Grant Before?</label>
                             <p class="fw-500 text-dark">
@@ -489,7 +501,7 @@
                     </div>
                     {% endif %}
 
-                    {% if can_edit_budget %}
+                    {% if can_edit_budget_details %}
                     <div class="collapse" id="budgetEditForm">
                         <hr class="my-2 mb-4">
                         <form method="POST" action="{% url 'update_budget_details' application.id %}">
@@ -498,25 +510,21 @@
                                 <div class="col-md-6 mb-3">
                                     <label for="decisionStatus" class="form-label fw-bold">Decision Status</label>
                                     <select id="decisionStatus" name="decision_status" class="form-select">
-                                        <option value="Pending" {% if application.decision_status == 'Pending' or not application.decision_status %}selected{% endif %}>Pending</option>
+                                        <option value="Drafted" {% if application.decision_status == 'Drafted' or application.decision_status == 'SUBMITTED' %}selected{% endif %}>Drafted</option>
+                                        <option value="Pending" {% if application.decision_status == 'Pending' or application.decision_status == 'Under Review' or not application.decision_status %}selected{% endif %}>Pending</option>
                                         <option value="Approved" {% if application.decision_status == 'Approved' %}selected{% endif %}>Approved</option>
-                                        <option value="Rejected" {% if application.decision_status == 'Rejected' %}selected{% endif %}>Rejected</option>
-                                        <option value="Archived" {% if application.decision_status == 'Archived' %}selected{% endif %}>Archived</option>
+                                        <option value="Not Selected" {% if application.decision_status == 'Rejected' or application.decision_status == 'Not Selected' %}selected{% endif %}>Not Selected</option>
                                     </select>
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label for="approvedSupportAmount" class="form-label fw-bold">Approved Support Amount (₹)</label>
                                     <input id="approvedSupportAmount" type="number" name="approved_support_amount"
-                                           class="form-control" min="0.01" {% if program == 'TRAVEL' %}max="100000"{% elif program == 'RFG' %}max="{{ rfg_cap }}"{% endif %} step="0.01"
+                                           class="form-control" min="0.01" max="{{ application.travel_budget }}" step="0.01"
                                            value="{% if application.decision_status == 'Approved' %}{% if application.approved_support_amount %}{{ application.approved_support_amount }}{% elif approved_amount %}{{ approved_amount }}{% endif %}{% endif %}"
                                            placeholder="Enter approved amount"
                                            {% if application.decision_status != 'Approved' %}disabled{% endif %}>
                                     <small id="approvedSupportAmountHelp" class="text-muted">
-                                        {% if application.decision_status == 'Approved' %}
-                                        Modify the amount approved by the Chairman.
-                                        {% else %}
-                                        Enter approved amount when status is set to Approved.
-                                        {% endif %}
+                                        Requested by student: ₹{{ application.travel_budget }}. Approved amount cannot exceed requested amount.
                                     </small>
                                 </div>
                                 <div class="col-12 mb-3">
@@ -540,6 +548,157 @@
                     {% endif %}
                 </div>
             </div>
+
+            {% if not is_student and user_role %}
+            <!-- ================= REVIEWER RECOMMENDATIONS & EVALUATION NOTES ================= -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header py-3 d-flex align-items-center justify-content-between"
+                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff;">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="feather-users me-2" style="color: #ffffff;"></i>Reviewer Recommendations & Committee Evaluation Notes
+                    </h5>
+                    {% if is_reviewer and current_user_eval %}
+                    <span class="badge bg-light text-dark">
+                        <i class="feather-user-check me-1 text-primary"></i>Logged in as Reviewer
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-4">
+                        Independent suggestions from each of the three committee reviewers. Each reviewer submits their own recommended support amount and evaluation notes.
+                    </p>
+
+                    <div class="row g-3 mb-4">
+                        {% for rev in reviewer_evaluations %}
+                        <div class="col-md-4">
+                            <div class="card h-100 {% if rev.is_current_user %}border-primary border-2 shadow-sm{% else %}border-light-subtle bg-light{% endif %}">
+                                <div class="card-header d-flex justify-content-between align-items-center bg-transparent py-2 border-bottom">
+                                    <div>
+                                        <strong class="text-dark">{{ rev.name }}</strong>
+                                        {% if rev.is_current_user %}
+                                        <span class="badge bg-primary ms-1">You</span>
+                                        {% endif %}
+                                    </div>
+                                    <div>
+                                        {% if rev.opened_at %}
+                                        <span class="badge bg-info text-dark" title="Opened {{ rev.opened_at }}">
+                                            <i class="feather-check me-1"></i>Opened
+                                        </span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">
+                                            <i class="feather-clock me-1"></i>Not Opened
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="card-body d-flex flex-column">
+                                    {% if is_already_approved or application.status == 'Accepted' or application.status == 'Approved' or application.decision_status == 'Approved' %}
+                                    <div class="mb-2">
+                                        <label class="text-muted small fw-bold d-block mb-1">Recommended Decision</label>
+                                        <span class="badge bg-success">
+                                            Approved By Chairman
+                                        </span>
+                                    </div>
+                                    {% elif rev.decision_status %}
+                                    <div class="mb-2">
+                                        <label class="text-muted small fw-bold d-block mb-1">Recommended Decision</label>
+                                        <span class="badge {% if rev.decision_status == 'Approved' or rev.decision_status == 'Approved By Chairman' %}bg-success{% elif rev.decision_status == 'Not Selected' or rev.decision_status == 'Rejected' %}bg-danger{% elif rev.decision_status == 'Drafted' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">
+                                            {{ rev.decision_status }}
+                                        </span>
+                                    </div>
+                                    {% endif %}
+                                    <div class="mb-3">
+                                        <label class="text-muted small fw-bold d-block mb-1">Suggested Support Amount</label>
+                                        {% if rev.suggested_amount %}
+                                        <h5 class="fw-bold text-success mb-0">₹{{ rev.suggested_amount }}</h5>
+                                        <small class="text-muted">Recommended support</small>
+                                        {% else %}
+                                        <span class="text-muted fst-italic small">No amount suggested yet</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <label class="text-muted small fw-bold d-block mb-1">Committee Evaluation Notes</label>
+                                        {% if rev.committee_evaluation_notes %}
+                                        <p class="text-dark small mb-0" style="white-space: pre-wrap; line-height: 1.5;">{{ rev.committee_evaluation_notes }}</p>
+                                        {% else %}
+                                        <p class="text-muted fst-italic small mb-0">No evaluation notes submitted yet</p>
+                                        {% endif %}
+                                    </div>
+                                    {% if rev.updated_at %}
+                                    <div class="border-top pt-2 mt-3">
+                                        <small class="text-muted" style="font-size: 0.75rem;">
+                                            <i class="feather-clock me-1"></i>Updated {{ rev.updated_at }}
+                                        </small>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="col-12">
+                            <p class="text-muted">No committee reviewers assigned for this programme.</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    {% if is_reviewer and application.status != "Approved" and application.status != "Accepted" and application.status != "Not Selected" and application.status != "Rejected" %}
+                    <!-- Reviewer Input / Update Form -->
+                    <div class="card border-primary border-opacity-50 shadow-sm mt-3">
+                        <div class="card-header bg-light py-2">
+                            <h6 class="mb-0 fw-bold text-primary">
+                                <i class="feather-edit-3 me-2"></i>Enter / Update Your Recommendation
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <form method="POST" action="{% url 'save_reviewer_evaluation' application.id %}" id="reviewerEvalForm">
+                                {% csrf_token %}
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="revDecisionStatus" class="form-label fw-bold">
+                                            Decision Status <span class="text-danger">*</span>
+                                        </label>
+                                        <select id="revDecisionStatus" name="decision_status" class="form-select" required>
+                                            <option value="Drafted" {% if current_user_eval.decision_status == 'Drafted' or not current_user_eval.decision_status and application.decision_status == 'Drafted' %}selected{% endif %}>Drafted</option>
+                                            <option value="Pending" {% if current_user_eval.decision_status == 'Pending' or not current_user_eval.decision_status and application.decision_status == 'Pending' or not current_user_eval.decision_status and application.decision_status == 'Under Review' %}selected{% endif %}>Pending</option>
+                                            <option value="Approved" {% if current_user_eval.decision_status == 'Approved' or not current_user_eval.decision_status and application.decision_status == 'Approved' %}selected{% endif %}>Approved</option>
+                                            <option value="Not Selected" {% if current_user_eval.decision_status == 'Not Selected' or not current_user_eval.decision_status and application.decision_status == 'Not Selected' or not current_user_eval.decision_status and application.decision_status == 'Rejected' %}selected{% endif %}>Not Selected</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="revSuggestedAmount" class="form-label fw-bold">
+                                            Suggested Support Amount (₹) <span class="text-danger">*</span>
+                                        </label>
+                                        <input type="number" id="revSuggestedAmount" name="suggested_amount"
+                                               class="form-control" min="0.01" max="{{ application.travel_budget }}" step="0.01"
+                                               value="{{ current_user_eval.suggested_amount|default:'' }}"
+                                               placeholder="Enter suggested amount" required>
+                                        <small class="form-text text-muted">
+                                            Requested by student: <strong>₹{{ application.travel_budget }}</strong>. Suggested amount cannot exceed requested amount.
+                                        </small>
+                                    </div>
+                                    <div class="col-12 mb-3">
+                                        <label for="revCommitteeNotes" class="form-label fw-bold">Committee Evaluation Notes</label>
+                                        <textarea id="revCommitteeNotes" name="committee_evaluation_notes"
+                                                  class="form-control" rows="3"
+                                                  placeholder="Enter your committee evaluation notes, observations, and recommendations">{{ current_user_eval.committee_evaluation_notes|default:'' }}</textarea>
+                                        <small class="form-text text-muted">
+                                            Your notes and suggested amount are stored separately from other reviewers and the Chairman.
+                                        </small>
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-end">
+                                    <button type="submit" class="btn btn-primary fw-bold">
+                                        <i class="feather-save me-1"></i>Save Recommendation
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                </div>
+            </div>
+            {% endif %}
 
             <!-- Documents -->
             <div class="card shadow-sm border-0 mb-4">
@@ -603,9 +762,10 @@
                     </div>
                 </div>
 
-                {% if application.status != "Rejected" %}
+                {% if application.status != "Rejected" and application.status != "Not Selected" %}
                     <!-- RIGHT: FINAL APPROVAL DETAILS -->
-                    {% if application.status == "Accepted" and final_approval %}
+                    {% if final_approval %}
+                    {% if application.status == "Accepted" or application.status == "Approved" %}
                     <div class="col-md-6">
                         <div class="card shadow-sm border-0 h-100 border-success">
                             <div class="card-header bg-success text-white">
@@ -626,12 +786,13 @@
                         </div>
                     </div>
                     {% endif %}
+                    {% endif %}
                     <!-- Notify Applicant now lives in the notification-state banner
                          at the top of the page, which covers Under Review, Accepted
                          and Rejected rather than Accepted alone. -->
 
-                    <!-- RIGHT: REVIEW FORM (ONLY IF NOT ACCEPTED) -->
-                    {% if application.status != "Accepted" %}
+                    <!-- RIGHT: REVIEW FORM (ONLY IF NOT ACCEPTED/APPROVED) -->
+                    {% if application.status != "Accepted" and application.status != "Approved" %}
                         {% if can_review and not user_review %}
                         <div class="col-md-6">
                             <div class="card shadow-sm border-0 h-100">
@@ -672,12 +833,12 @@
 
             <!-- ================= FINAL APPROVAL ================= -->
             {% if can_decide %}
-                {% if application.status != "Accepted" and application.status != "Rejected" %}
-                    {% if user_review and reviews %}
+                {% if application.status != "Accepted" and application.status != "Approved" and application.status != "Rejected" and application.status != "Not Selected" %}
+                    {% if user_review %}
                     <div class="card shadow-sm border-0 mb-4 border-success">
                         <div class="card-header bg-success text-white">
                             <h5 class="mb-0 fw-bold">
-                                <i class="feather-check-circle me-2"></i>Final Approval
+                                <i class="feather-check-circle me-2"></i>Final Approval (Chairman Decision)
                             </h5>
                         </div>
                         <div class="card-body">
@@ -685,29 +846,20 @@
                                 {% csrf_token %}
 
                                 <div class="mb-3">
-                                    <label class="fw-bold">Approved Amount</label>
-                                    {% if program == 'RFG' %}
+                                    <label class="fw-bold">Approved Amount (₹) <span class="text-danger">*</span></label>
                                     <input type="number" name="amount" class="form-control"
-                                           min="1" max="{{ rfg_cap }}" step="1" required
-                                           placeholder="Up to ₹{{ rfg_cap }}">
+                                           min="0.01" max="{{ application.travel_budget }}" step="0.01" required
+                                           placeholder="Enter approved amount (up to ₹{{ application.travel_budget }})">
                                     <small class="text-muted">
-                                        Requested ₹{{ application.travel_budget }}.
-                                        RFG approvals cannot exceed ₹{{ rfg_cap }}.
+                                        Requested by student: <strong>₹{{ application.travel_budget }}</strong>.
+                                        Approved amount cannot exceed requested amount.
+                                        {% if program == 'RFG' %}RFG approvals also cannot exceed ₹{{ rfg_cap }}.{% endif %}
                                     </small>
-                                    {% else %}
-                                    <input type="number" name="amount" class="form-control"
-                                           min="0.01" max="100000" step="0.01" required
-                                           placeholder="Enter amount (up to ₹1,00,000)">
-                                    <small class="text-muted">
-                                        Requested ₹{{ application.travel_budget }}.
-                                        Maximum approval amount is ₹1,00,000.
-                                    </small>
-                                    {% endif %}
                                 </div>
 
                                 <div class="mb-3">
                                     <label class="fw-bold">Final Remarks</label>
-                                    <textarea name="feedback" rows="3" class="form-control"></textarea>
+                                    <textarea name="feedback" rows="3" class="form-control" placeholder="Enter final approval comments or remarks (optional)"></textarea>
                                 </div>
 
                                 <button class="btn btn-success w-100 fw-bold fs-5">
@@ -717,8 +869,8 @@
                         </div>
                     </div>
                     {% else %}
-                    <div class="alert alert-warning fw-bold text-center">
-                        ChairPerson must submit a review before final approval.
+                    <div class="alert alert-warning fw-bold text-center mb-4">
+                        <i class="feather-alert-circle me-2"></i>Chairman must complete and submit the Review/Rating Form before final approval.
                     </div>
                     {% endif %}
                 {% endif %}
@@ -802,8 +954,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 amountInput.value = '';
                 amountInput.setAttribute('disabled', 'disabled');
+                let displayStatus = this.value === 'Rejected' ? 'Not Selected' : this.value;
                 if (amountHelp) {
-                    amountHelp.textContent = 'Approved support amount is cleared because status is ' + this.value + '.';
+                    amountHelp.textContent = 'Approved support amount is cleared because status is ' + displayStatus + '.';
                 }
             } else {
                 amountInput.removeAttribute('disabled');
@@ -817,14 +970,40 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         const form = statusSelect.closest('form');
+        const reqBudget = parseFloat("{{ application.travel_budget|default:'0' }}");
         if (form) {
-            form.addEventListener('submit', function() {
+            form.addEventListener('submit', function(e) {
                 if (statusSelect.value !== 'Approved') {
                     amountInput.removeAttribute('disabled');
                     amountInput.value = '';
+                } else if (reqBudget > 0) {
+                    const val = parseFloat(amountInput.value);
+                    if (val > reqBudget) {
+                        e.preventDefault();
+                        alert('Approved support amount (₹' + val.toLocaleString() + ') cannot exceed the amount requested by the student (₹' + reqBudget.toLocaleString() + ').');
+                        amountInput.focus();
+                        return false;
+                    }
                 }
             });
         }
+    }
+
+    const revForm = document.getElementById('reviewerEvalForm');
+    if (revForm) {
+        revForm.addEventListener('submit', function(e) {
+            const revAmountInput = document.getElementById('revSuggestedAmount');
+            const reqBudget = parseFloat("{{ application.travel_budget|default:'0' }}");
+            if (revAmountInput && reqBudget > 0) {
+                const val = parseFloat(revAmountInput.value);
+                if (val > reqBudget) {
+                    e.preventDefault();
+                    alert('Suggested support amount (₹' + val.toLocaleString() + ') cannot exceed the amount requested by the student (₹' + reqBudget.toLocaleString() + ').');
+                    revAmountInput.focus();
+                    return false;
+                }
+            }
+        });
     }
 });
 </script>

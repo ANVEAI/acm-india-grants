@@ -13,7 +13,7 @@ def user_profile(request):
     can_manage_acm_budget = False
     can_view_budget = False
 
-    if request.user.is_authenticated:
+    if hasattr(request, 'user') and request.user.is_authenticated:
         can_manage_acm_budget = permissions.can_manage_acm_budget(request)
         can_view_budget = permissions.can_view_budget(request)
         email = request.user.email

@@ -86,6 +86,114 @@ def _localise_row(row_dict, *keys):
 # sends no applicant email of any kind.
 NOTIFY_PERMISSIONS = permissions.NOTIFY_PERMISSIONS
 
+STATUS_DISPLAY = {
+    "SUBMITTED": "Drafted",
+    "Drafted": "Drafted",
+    "Under Review": "Pending",
+    "Pending": "Pending",
+    "Accepted": "Approved",
+    "Approved": "Approved",
+    "APPROVED": "Approved",
+    "Rejected": "Not Selected",
+    "Not Selected": "Not Selected",
+    "Archived": "Archived",
+}
+
+
+def get_status_display(status):
+    if not status:
+        return ""
+    return STATUS_DISPLAY.get(status, status)
+
+
+def ensure_reviewer_evaluations_table(cursor):
+    """Ensure the REVIEWER_EVALUATIONS table exists in PostgreSQL."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS public."REVIEWER_EVALUATIONS" (
+            "ID" bigserial PRIMARY KEY,
+            "APPLICATION_ID" bigint NOT NULL,
+            "USER_ID" bigint NOT NULL,
+            "OPENED_AT" timestamp without time zone,
+            "SUGGESTED_AMOUNT" numeric(12, 2),
+            "COMMITTEE_EVALUATION_NOTES" text,
+            "CREATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+            "UPDATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "REVIEWER_EVALUATIONS_app_user_uniq" UNIQUE ("APPLICATION_ID", "USER_ID"),
+            CONSTRAINT "REVIEWER_EVALUATIONS_user_fk" FOREIGN KEY ("USER_ID") REFERENCES "USERS"("ID") ON DELETE CASCADE,
+            CONSTRAINT "REVIEWER_EVALUATIONS_app_fk" FOREIGN KEY ("APPLICATION_ID") REFERENCES "APPLICATIONS"("ID") ON DELETE CASCADE
+        );
+    """)
+    cursor.execute('ALTER TABLE public."REVIEWER_EVALUATIONS" ADD COLUMN IF NOT EXISTS "DECISION_STATUS" character varying(50);')
+    cursor.execute('ALTER TABLE public."APPLICATIONS" ALTER COLUMN "DECISION_STATUS" SET DEFAULT \'Drafted\';')
+
+
+def get_user_application_status(
+    raw_status,
+    program,
+    user_id=None,
+    user_role=None,
+    application_id=None,
+    reviewer_opens_by_app=None,
+    program_reviewers=None,
+    cursor=None
+):
+    """Computes application status (Drafted, Pending, Approved, Not Selected, Archived)
+    based on per-user reviewer open rules:
+    - Approved / Accepted -> 'Approved' for everyone
+    - Not Selected / Rejected -> 'Not Selected' for everyone
+    - Archived -> 'Archived' for everyone
+    - Otherwise:
+      - If user is an active Reviewer for this program:
+        - Shows 'Pending' if this reviewer has opened the application
+        - Otherwise 'Drafted'
+      - Non-reviewers (Chairman, Finance, Observer, Student, etc.):
+        - Shows 'Pending' if all active reviewers for this program have opened the application
+        - Otherwise 'Drafted'
+    """
+    if raw_status in ("Accepted", "Approved", "APPROVED"):
+        return "Approved"
+    if raw_status in ("Rejected", "Not Selected"):
+        return "Not Selected"
+    if raw_status == "Archived":
+        return "Archived"
+
+    assigned_revs = set()
+    if program_reviewers is not None and program in program_reviewers:
+        assigned_revs = program_reviewers[program]
+    elif cursor is not None and program:
+        cursor.execute("""
+            SELECT upr."USER_ID"
+            FROM "USER_PROGRAM_ROLES" upr
+            JOIN "USERS" u ON u."ID" = upr."USER_ID"
+            WHERE upr."PROGRAM" = %s AND upr."ROLE" = 'Reviewer' AND (u."STATUS" = 'Active' OR u."STATUS" IS NULL);
+        """, [program])
+        assigned_revs = set(r[0] for r in cursor.fetchall())
+
+    opened_revs = set()
+    if reviewer_opens_by_app is not None and application_id in reviewer_opens_by_app:
+        opened_revs = reviewer_opens_by_app[application_id] & assigned_revs
+    elif cursor is not None and application_id is not None:
+        cursor.execute("""
+            SELECT re."USER_ID"
+            FROM "REVIEWER_EVALUATIONS" re
+            WHERE re."APPLICATION_ID" = %s AND re."OPENED_AT" IS NOT NULL;
+        """, [application_id])
+        opened_revs = set(r[0] for r in cursor.fetchall()) & assigned_revs
+
+    is_user_a_reviewer = (user_role == "Reviewer" and user_id is not None and user_id in assigned_revs)
+
+    if is_user_a_reviewer:
+        if user_id in opened_revs:
+            return "Pending"
+        return "Drafted"
+    else:
+        all_opened = (len(assigned_revs) > 0 and len(opened_revs) >= len(assigned_revs))
+        if all_opened:
+            return "Pending"
+        return "Drafted"
+
+
+
 
 def _program_of(app_id):
     """Programme of an application, or None if it does not exist.
@@ -239,24 +347,11 @@ def budget_management(request):
             "is_finance_user": True,
         })
 
-    # --- Read-only view for non-Finance internal users ---
-    # Show budget summaries only for programmes the user has access to
-    budgets = []
-    with connection.cursor() as cursor:
-        for prog in permissions.visible_programs(request):
-            summary = acm_budget.summary(cursor, prog)
-            if summary.get("updated_at"):
-                summary["updated_at"] = _as_utc_aware(summary["updated_at"])
-            budgets.append({
-                "program": prog,
-                "program_label": permissions.PROGRAM_LABELS[prog],
-                "budget": summary,
-            })
-
-    return render(request, "budget_management.html", {
-        "is_finance_user": False,
-        "budgets": budgets,
-    })
+    # Non-Finance users: budget overview is now hosted directly on the dashboard
+    if not is_finance_user:
+        if not permissions.can_view_budget(request):
+            return HttpResponseForbidden("You do not have permission to access this page.")
+        return redirect("dashboard")
 
 
 # Create your views here.
@@ -271,6 +366,7 @@ def dashboard(request):
     user_name = request.session.get('user_name')
     user_email = request.session.get('user_email')
     user_role = request.session.get('user_role')
+    user_id = request.session.get('user_id')
 
     # Programme roles determine the list. Finance is read-only and is confined
     # to the single programme associated with its reserved username.
@@ -280,10 +376,13 @@ def dashboard(request):
     # Applications list
     # -------------------------
     rows = []
-    total = submitted = under_review = approved = rejected = 0
+    applications = []
+    program_reviewers = {}
+    reviewer_opens_by_app = {}
 
     if programs:
         with connection.cursor() as cursor:
+            ensure_reviewer_evaluations_table(cursor)
             cursor.execute("""
                 SELECT
                     "ID",
@@ -301,44 +400,68 @@ def dashboard(request):
             """, [programs])
             rows = cursor.fetchall()
 
-        # -------------------------
-        # Insights (CARD COUNTS)
-        # -------------------------
-        with connection.cursor() as cursor:
+            # Load active reviewer IDs for the programs
             cursor.execute("""
-                SELECT
-                    COUNT(*) AS total,
-                    COUNT(*) FILTER (WHERE "STATUS" = 'SUBMITTED') AS submitted,
-                    COUNT(*) FILTER (WHERE "STATUS" = 'Under Review') AS under_review,
-                    COUNT(*) FILTER (WHERE "STATUS" IN ('APPROVED', 'Accepted')) AS approved,
-                    COUNT(*) FILTER (WHERE "STATUS" = 'Rejected') AS rejected
-                FROM "APPLICATIONS"
-                WHERE "PROGRAM" = ANY(%s);
+                SELECT upr."PROGRAM", upr."USER_ID"
+                FROM "USER_PROGRAM_ROLES" upr
+                JOIN "USERS" u ON u."ID" = upr."USER_ID"
+                WHERE upr."PROGRAM" = ANY(%s) AND upr."ROLE" = 'Reviewer' AND (u."STATUS" = 'Active' OR u."STATUS" IS NULL);
             """, [programs])
-            total, submitted, under_review, approved, rejected = cursor.fetchone()
+            for prog, uid in cursor.fetchall():
+                program_reviewers.setdefault(prog, set()).add(uid)
 
-    applications = [
-        {
+            # Load opened reviewers for all applications
+            cursor.execute("""
+                SELECT re."APPLICATION_ID", re."USER_ID"
+                FROM "REVIEWER_EVALUATIONS" re
+                WHERE re."OPENED_AT" IS NOT NULL;
+            """)
+            for aid, uid in cursor.fetchall():
+                reviewer_opens_by_app.setdefault(aid, set()).add(uid)
+
+    for r in rows:
+        app_id = r[0]
+        raw_status = r[5]
+        prog = r[8]
+        user_status = get_user_application_status(
+            raw_status=raw_status,
+            program=prog,
+            user_id=user_id,
+            user_role=user_role,
+            application_id=app_id,
+            reviewer_opens_by_app=reviewer_opens_by_app,
+            program_reviewers=program_reviewers,
+        )
+        applications.append({
             "id": r[0],
             "tracking_code": r[1],
             "applicant_name": r[2],
             "paper_title": r[3],
             "conference_name": r[4],
-            "status": r[5],
+            "status": user_status,
+            "status_display": user_status,
+            "raw_status": raw_status,
             "paper_file_path": r[6],
             "created_at": r[7],
             "program": r[8],
             "program_label": permissions.PROGRAM_LABELS.get(r[8], r[8]),
-        }
-        for r in rows
-    ]
+        })
+
+    total = len(applications)
+    drafted = sum(1 for a in applications if a["status"] == "Drafted")
+    pending = sum(1 for a in applications if a["status"] == "Pending")
+    approved = sum(1 for a in applications if a["status"] == "Approved")
+    not_selected = sum(1 for a in applications if a["status"] == "Not Selected")
 
     insights = {
         "total": total,
-        "submitted": submitted,
-        "under_review": under_review,
+        "submitted": drafted,
+        "drafted": drafted,
+        "under_review": pending,
+        "pending": pending,
         "approved": approved,
-        "rejected": rejected,
+        "rejected": not_selected,
+        "not_selected": not_selected,
     }
 
     # -------------------------
@@ -351,6 +474,22 @@ def dashboard(request):
         if os.path.exists(image_path):
             profile_image_url = f"/media/profile/{image_name}"
 
+    # -------------------------
+    # Budget overview (for users with can_view_budget)
+    # -------------------------
+    budgets = []
+    if permissions.can_view_budget(request):
+        with connection.cursor() as cursor:
+            for prog in programs:
+                summary = acm_budget.summary(cursor, prog)
+                if summary.get("updated_at"):
+                    summary["updated_at"] = _as_utc_aware(summary["updated_at"])
+                budgets.append({
+                    "program": prog,
+                    "program_label": permissions.PROGRAM_LABELS.get(prog, prog),
+                    "budget": summary,
+                })
+
     return render(request, "dashboard.html", {
         "user_name": user_name,
         "user_email": user_email,
@@ -361,6 +500,7 @@ def dashboard(request):
         "decide_programs": [pr for pr in programs if permissions.can_decide(request, pr)],
         "has_program_access": bool(programs),
         "show_program_column": len(programs) > 1,
+        "budgets": budgets,
     })
 
 # def application_details(request, app_id):
@@ -481,36 +621,48 @@ def application_details(request, app_id):
         return redirect('dashboard')
 
     with connection.cursor() as cursor:
+        ensure_reviewer_evaluations_table(cursor)
 
-        # Reviewer opens first time → mark under review
-        if permissions.marks_under_review(request, program):
-            # Fetch current status to check if it was previously not under review
+        is_reviewer = (permissions.role_for(request, program) == permissions.ROLE_REVIEWER)
+        if is_reviewer and user_id:
+            now_dt = timezone.now()
             cursor.execute("""
-                SELECT "STATUS", "EMAIL", "APPLICANT_NAME", "CONFERENCE_NAME"
-                FROM "APPLICATIONS"
-                WHERE "ID" = %s;
+                INSERT INTO "REVIEWER_EVALUATIONS" ("APPLICATION_ID", "USER_ID", "OPENED_AT")
+                VALUES (%s, %s, %s)
+                ON CONFLICT ("APPLICATION_ID", "USER_ID")
+                DO UPDATE SET "OPENED_AT" = COALESCE("REVIEWER_EVALUATIONS"."OPENED_AT", EXCLUDED."OPENED_AT");
+            """, [app_id, user_id, now_dt])
+
+            # Check if all active assigned reviewers for this program have opened
+            cursor.execute("""
+                SELECT upr."USER_ID"
+                FROM "USER_PROGRAM_ROLES" upr
+                JOIN "USERS" u ON u."ID" = upr."USER_ID"
+                WHERE upr."PROGRAM" = %s AND upr."ROLE" = 'Reviewer' AND (u."STATUS" = 'Active' OR u."STATUS" IS NULL);
+            """, [program])
+            assigned_revs = set(r[0] for r in cursor.fetchall())
+
+            cursor.execute("""
+                SELECT re."USER_ID"
+                FROM "REVIEWER_EVALUATIONS" re
+                WHERE re."APPLICATION_ID" = %s AND re."OPENED_AT" IS NOT NULL;
             """, [app_id])
-            app_row = cursor.fetchone()
-            if not app_row:
-                return render(request, "error.html", {"error": "Application not found"}, status=404)
+            opened_revs = set(r[0] for r in cursor.fetchall()) & assigned_revs
 
-            previous_status, applicant_email, applicant_name, conference_name = app_row
-
-            # Only update if it was not previously reviewed.
-            # No email is sent here: all applicant communication now goes out
-            # through notify_applicant, so an administrator decides when the
-            # applicant hears anything. Merely opening this page must not mail
-            # someone.
-            if previous_status != "Under Review":
+            if len(assigned_revs) > 0 and len(opened_revs) >= len(assigned_revs):
                 cursor.execute("""
                     UPDATE "APPLICATIONS"
                     SET
                         "STATUS" = 'Under Review',
+                        "DECISION_STATUS" = CASE
+                            WHEN "DECISION_STATUS" IN ('SUBMITTED', 'Drafted', 'Pending', '') OR "DECISION_STATUS" IS NULL THEN 'Pending'
+                            ELSE "DECISION_STATUS"
+                        END,
                         "REVIEWED_ONCE" = TRUE,
-                        "REVIEWED_AT" = %s
+                        "REVIEWED_AT" = COALESCE("REVIEWED_AT", %s)
                     WHERE "ID" = %s
-                      AND "REVIEWED_ONCE" = FALSE;
-                """, [timezone.now(), app_id])
+                      AND "STATUS" IN ('SUBMITTED', 'Drafted');
+                """, [now_dt, app_id])
 
         # Fetch application
         cursor.execute("""
@@ -525,6 +677,63 @@ def application_details(request, app_id):
 
         colnames = [desc[0].lower() for desc in cursor.description]
         application = dict(zip(colnames, row))
+
+        # Check for reviewer evaluations saved decision_status
+        cursor.execute("""
+            SELECT "DECISION_STATUS"
+            FROM "REVIEWER_EVALUATIONS"
+            WHERE "APPLICATION_ID" = %s AND "DECISION_STATUS" IS NOT NULL
+            ORDER BY "UPDATED_AT" DESC LIMIT 1;
+        """, [app_id])
+        latest_rev_decision = cursor.fetchone()
+
+        # Resolve status display per user
+        computed_status = get_user_application_status(
+            raw_status=application.get("status"),
+            program=program,
+            user_id=user_id,
+            user_role=user_role,
+            application_id=app_id,
+            cursor=cursor
+        )
+        application["status"] = computed_status
+        application["status_display"] = computed_status
+        application["notified_status_display"] = get_status_display(application.get("notified_status"))
+
+        # Resolve Decision Status for Budget Details section:
+        raw_app_status = row[colnames.index("status")] if "status" in colnames else application.get("status")
+        db_decision_status = row[colnames.index("decision_status")] if "decision_status" in colnames else application.get("decision_status")
+
+        if application.get("budget_edited_by"):
+            application["decision_status"] = get_status_display(application.get("decision_status"))
+        elif raw_app_status in ("Accepted", "Approved", "APPROVED") or db_decision_status in ("Accepted", "Approved"):
+            application["decision_status"] = "Approved"
+        elif raw_app_status in ("Rejected", "Not Selected") or db_decision_status in ("Rejected", "Not Selected"):
+            application["decision_status"] = "Not Selected"
+        elif latest_rev_decision and latest_rev_decision[0]:
+            application["decision_status"] = get_status_display(latest_rev_decision[0])
+        else:
+            # Check if all active reviewers for this program have opened
+            cursor.execute("""
+                SELECT upr."USER_ID"
+                FROM "USER_PROGRAM_ROLES" upr
+                JOIN "USERS" u ON u."ID" = upr."USER_ID"
+                WHERE upr."PROGRAM" = %s AND upr."ROLE" = 'Reviewer' AND (u."STATUS" = 'Active' OR u."STATUS" IS NULL);
+            """, [program])
+            all_assigned_revs = set(r[0] for r in cursor.fetchall())
+
+            cursor.execute("""
+                SELECT re."USER_ID"
+                FROM "REVIEWER_EVALUATIONS" re
+                WHERE re."APPLICATION_ID" = %s AND re."OPENED_AT" IS NOT NULL;
+            """, [app_id])
+            all_opened_revs = set(r[0] for r in cursor.fetchall()) & all_assigned_revs
+
+            if len(all_assigned_revs) > 0 and len(all_opened_revs) >= len(all_assigned_revs):
+                application["decision_status"] = "Pending"
+            else:
+                application["decision_status"] = "Drafted"
+
         _localise_row(
             application,
             'created_at', 'updated_at', 'reviewed_at', 'notified_at',
@@ -541,9 +750,46 @@ def application_details(request, app_id):
                 rfg_detail["scheme_label"] = rfg.SCHEME_LABELS.get(
                     rfg_detail.get("scheme"), rfg_detail.get("scheme"))
 
+        # Fetch evaluations for all active reviewers assigned to this program
+        cursor.execute("""
+            SELECT
+                u."ID",
+                u."NAME",
+                u."EMAIL",
+                re."OPENED_AT",
+                re."SUGGESTED_AMOUNT",
+                re."COMMITTEE_EVALUATION_NOTES",
+                re."UPDATED_AT",
+                re."DECISION_STATUS"
+            FROM "USERS" u
+            JOIN "USER_PROGRAM_ROLES" upr ON u."ID" = upr."USER_ID"
+            LEFT JOIN "REVIEWER_EVALUATIONS" re
+                ON re."USER_ID" = u."ID" AND re."APPLICATION_ID" = %s
+            WHERE upr."PROGRAM" = %s AND upr."ROLE" = 'Reviewer' AND (u."STATUS" = 'Active' OR u."STATUS" IS NULL)
+            ORDER BY u."ID" ASC;
+        """, [app_id, program])
+        reviewer_evaluations = [
+            {
+                "user_id": r[0],
+                "name": r[1],
+                "email": r[2],
+                "opened_at": _as_utc_aware(r[3]),
+                "suggested_amount": r[4],
+                "committee_evaluation_notes": r[5],
+                "updated_at": _as_utc_aware(r[6]),
+                "decision_status": get_status_display(r[7]) if r[7] else None,
+                "is_current_user": (r[0] == user_id),
+            }
+            for r in cursor.fetchall()
+        ]
+        current_user_eval = next(
+            (re for re in reviewer_evaluations if re["is_current_user"]),
+            None
+        )
+
         # Fetch reviews
         cursor.execute("""
-            SELECT r."ID", r."RATING", r."FEEDBACK", r."CREATED_AT", u."NAME"
+            SELECT r."ID", r."RATING", r."FEEDBACK", r."CREATED_AT", u."NAME", r."USER_ID"
             FROM "REVIEWS" r
             JOIN "USERS" u ON r."USER_ID" = u."ID"
             WHERE r."APPLICATION_ID" = %s
@@ -556,23 +802,24 @@ def application_details(request, app_id):
                 "rating": r[1],
                 "feedback": r[2],
                 "created_at": _as_utc_aware(r[3]),
-                "reviewer_name": r[4]
+                "reviewer_name": r[4],
+                "user_id": r[5],
             }
             for r in cursor.fetchall()
         ]
 
         # User's own review
         user_review = next(
-            (r for r in reviews if r["reviewer_name"] == user_name),
+            (r for r in reviews if (user_id and r.get("user_id") == user_id) or r["reviewer_name"] == user_name),
             None
         )
 
         # Fetch final approval
         cursor.execute("""
             SELECT fa."APPROVED_AMOUNT",
-                   fa."FEEDBACK",
-                   fa."CREATED_AT",
-                   u."NAME"
+               fa."FEEDBACK",
+               fa."CREATED_AT",
+               u."NAME"
             FROM "FINAL_APPROVALS" fa
             JOIN "USERS" u ON fa."CHAIRMAN_ID" = u."ID"
             WHERE fa."APPLICATION_ID" = %s
@@ -583,7 +830,7 @@ def application_details(request, app_id):
         final_approval = None
         approved_amount = None
 
-        if fa and application.get("status") == "Accepted":
+        if fa and application.get("status") in ("Accepted", "Approved"):
             final_approval = {
                 "amount": fa[0],
                 "feedback": fa[1],
@@ -592,12 +839,29 @@ def application_details(request, app_id):
             }
             approved_amount = fa[0]  # Pass to template
 
+        cursor.execute("""
+            SELECT COUNT(*) FROM "FINAL_APPROVALS" WHERE "APPLICATION_ID" = %s
+        """, [app_id])
+        has_fa_record = cursor.fetchone()[0] > 0
+        is_already_approved = has_fa_record or (application.get("status") in ("Accepted", "Approved")) or (application.get("decision_status") == "Approved")
+        is_rejected = (application.get("status") in ("Rejected", "Not Selected")) or (application.get("decision_status") in ("Rejected", "Not Selected"))
+        can_edit_budget = permissions.can_edit_budget(request, program)
+        can_decide = permissions.can_decide(request, program)
+        can_edit_budget_details = can_edit_budget and can_decide and (is_already_approved or is_rejected)
+
+        if is_already_approved:
+            for rev in reviewer_evaluations:
+                rev["decision_status"] = "Approved By Chairman"
+
     return render(request, "details.html", {
         "application": application,
         "reviews": reviews,
         "user_review": user_review,
         "final_approval": final_approval,
         "approved_amount": approved_amount,
+        "is_already_approved": is_already_approved,
+        "is_rejected": is_rejected,
+        "can_edit_budget_details": can_edit_budget_details,
         "user_role": user_role,
         "program": program,
         "program_label": permissions.PROGRAM_LABELS.get(program, program),
@@ -605,11 +869,15 @@ def application_details(request, app_id):
         "rfg_cap": rfg.RFG_APPROVAL_CAP,
         "is_observer": permissions.is_observer(request, program),
         "can_review": permissions.can_review(request, program),
-        "can_edit_budget": permissions.can_edit_budget(request, program),
-        "can_decide": permissions.can_decide(request, program),
+        "can_edit_budget": can_edit_budget,
+        "can_decide": can_decide,
         "can_notify": permissions.can_notify(request, program,
                                              application.get("status"),
                                              application.get("notified_status")),
+        "reviewer_evaluations": reviewer_evaluations,
+        "current_user_eval": current_user_eval,
+        "is_reviewer": is_reviewer,
+        "is_student": False,
     })
 
 
@@ -629,7 +897,7 @@ def update_budget_details(request, app_id):
     approved_support_amount_raw = request.POST.get("approved_support_amount", "").strip()
     committee_evaluation_notes = request.POST.get("committee_evaluation_notes", "").strip()
 
-    VALID_DECISION_STATUSES = ("Pending", "Approved", "Rejected", "Archived")
+    VALID_DECISION_STATUSES = ("Drafted", "Pending", "Approved", "Rejected", "Not Selected")
     if decision_status and decision_status not in VALID_DECISION_STATUSES:
         messages.error(request, "Invalid decision status selected.")
         return redirect("application_details", app_id=app_id)
@@ -663,43 +931,61 @@ def update_budget_details(request, app_id):
         with connection.cursor() as cursor:
             acm_budget.lock_ledger(cursor)
             cursor.execute(
-                'SELECT "STATUS", "DECISION_STATUS" FROM "APPLICATIONS" WHERE "ID" = %s FOR UPDATE',
+                'SELECT "STATUS", "DECISION_STATUS", "TRAVEL_BUDGET" FROM "APPLICATIONS" WHERE "ID" = %s FOR UPDATE',
                 [app_id])
             app_row = cursor.fetchone()
             if not app_row:
                 messages.error(request, "Application not found.")
                 return redirect("dashboard")
-            current_status, current_decision = app_row[0], app_row[1]
+            current_status, current_decision, travel_budget = app_row[0], app_row[1], app_row[2]
+            requested_budget = Decimal(str(travel_budget or 0))
 
             cursor.execute(
                 'SELECT COUNT(*) FROM "FINAL_APPROVALS" WHERE "APPLICATION_ID" = %s',
                 [app_id])
             has_final_approval = cursor.fetchone()[0] > 0
-            is_approved = (current_status == "Accepted" or has_final_approval)
+            is_approved = (current_status in ("Accepted", "Approved") or has_final_approval)
+            is_rejected = (current_status in ("Rejected", "Not Selected") or current_decision in ("Rejected", "Not Selected"))
 
-            if decision_status in ("Pending", "Rejected", "Archived"):
-                # When changed to Rejected/Pending/Archived, approved amount must be empty
+            if not (is_approved or is_rejected):
+                messages.error(
+                    request,
+                    "Initial approval must be completed through the Review and Final Approval workflow before Budget Details can be edited."
+                )
+                return redirect("application_details", app_id=app_id)
+
+            if decision_status in ("Drafted", "Pending", "Rejected", "Not Selected"):
+                if not permissions.can_decide(request, program):
+                    messages.error(request, "Only the Chairman can change the decision status.")
+                    return redirect("application_details", app_id=app_id)
+
+                # When changed to Rejected/Not Selected/Pending/Drafted, approved amount must be empty
                 approved_support_amount = None
                 new_app_status = {
+                    "Drafted": "SUBMITTED",
                     "Pending": "Under Review",
                     "Rejected": "Rejected",
-                    "Archived": "Archived",
+                    "Not Selected": "Rejected",
                 }.get(decision_status, current_status)
+                db_decision_status = "Rejected" if decision_status == "Not Selected" else decision_status
 
+                clear_rejection = (decision_status in ("Drafted", "Pending"))
                 cursor.execute("""
                     UPDATE "APPLICATIONS"
                     SET "STATUS" = %s,
                         "DECISION_STATUS" = %s,
                         "APPROVED_SUPPORT_AMOUNT" = NULL,
                         "COMMITTEE_EVALUATION_NOTES" = %s,
+                        "REJECTION_REASON" = CASE WHEN %s THEN NULL ELSE "REJECTION_REASON" END,
                         "BUDGET_EDITED_BY" = %s,
                         "BUDGET_EDITED_AT" = %s,
                         "UPDATED_AT" = %s
                     WHERE "ID" = %s
                 """, [
                     new_app_status,
-                    decision_status,
+                    db_decision_status,
                     committee_evaluation_notes,
+                    clear_rejection,
                     editor_label,
                     edited_at,
                     edited_at,
@@ -714,17 +1000,28 @@ def update_budget_details(request, app_id):
 
                 messages.success(
                     request,
-                    f"Application status changed to {decision_status}. Approved support amount has been cleared."
+                    f"Application status changed to {get_status_display(decision_status)}. Approved support amount has been cleared."
                 )
                 return redirect("application_details", app_id=app_id)
 
             elif decision_status == "Approved":
+                if not permissions.can_decide(request, program):
+                    messages.error(request, "Only the Chairman can approve an application.")
+                    return redirect("application_details", app_id=app_id)
+
                 if approved_support_amount is None:
                     messages.error(request, "Approved support amount is required when status is Approved.")
                     return redirect("application_details", app_id=app_id)
 
                 if approved_support_amount <= 0:
                     messages.error(request, "Approved support amount must be greater than zero.")
+                    return redirect("application_details", app_id=app_id)
+
+                if approved_support_amount > requested_budget:
+                    messages.error(
+                        request,
+                        f"Approved support amount (₹{approved_support_amount:,.2f}) cannot exceed the amount requested by the student (₹{requested_budget:,.2f})."
+                    )
                     return redirect("application_details", app_id=app_id)
 
                 if program == permissions.PROGRAM_TRAVEL and approved_support_amount > Decimal("100000"):
@@ -791,7 +1088,7 @@ def update_budget_details(request, app_id):
                         LIMIT 1
                     """, [program])
                     chair_row = cursor.fetchone()
-                    chairman_id = chair_row[0] if chair_row else request.session.get("user_id")
+                    chairman_id = request.session.get("user_id") or (chair_row[0] if chair_row else None)
 
                     cursor.execute("""
                         INSERT INTO "FINAL_APPROVALS"
@@ -822,6 +1119,92 @@ def update_budget_details(request, app_id):
                 ])
                 messages.success(request, "Budget details updated successfully.")
                 return redirect("application_details", app_id=app_id)
+
+
+@custom_login_required
+@require_POST
+def save_reviewer_evaluation(request, app_id):
+    """Save reviewer's committee evaluation notes and suggested support amount."""
+    user_id = request.session.get('user_id')
+    user_role = request.session.get('user_role')
+    program = _program_of(app_id)
+    if program is None:
+        return render(request, "404.html", {"message": "Application not found"}, status=404)
+
+    if not permissions.can_review(request, program):
+        return HttpResponseForbidden("You do not have permission to submit reviewer evaluations.")
+
+    with connection.cursor() as cursor:
+        ensure_reviewer_evaluations_table(cursor)
+        cursor.execute('SELECT "TRAVEL_BUDGET", "STATUS" FROM "APPLICATIONS" WHERE "ID" = %s', [app_id])
+        app_row = cursor.fetchone()
+        if not app_row:
+            messages.error(request, "Application not found.")
+            return redirect("dashboard")
+
+        requested_budget = Decimal(str(app_row[0] or 0))
+        current_status = app_row[1]
+
+        if current_status in ("Accepted", "Approved", "Rejected", "Not Selected"):
+            messages.error(request, "This application has already been finalized.")
+            return redirect("application_details", app_id=app_id)
+
+        decision_status = request.POST.get("decision_status", "").strip()
+        suggested_amount_raw = request.POST.get("suggested_amount", "").strip()
+        committee_evaluation_notes = request.POST.get("committee_evaluation_notes", "").strip()
+
+        VALID_REVIEWER_DECISION_STATUSES = ("Not Selected", "Approved", "Drafted", "Pending", "Rejected")
+        if not decision_status or decision_status not in VALID_REVIEWER_DECISION_STATUSES:
+            messages.error(request, "Please select a valid decision status.")
+            return redirect("application_details", app_id=app_id)
+
+        suggested_amount = None
+        if suggested_amount_raw:
+            try:
+                suggested_amount = Decimal(suggested_amount_raw)
+                if not suggested_amount.is_finite() or suggested_amount <= 0:
+                    raise ValueError
+            except (ArithmeticError, ValueError):
+                messages.error(request, "Suggested support amount must be a valid positive number.")
+                return redirect("application_details", app_id=app_id)
+
+            if suggested_amount.normalize().as_tuple().exponent < -2:
+                messages.error(request, "Suggested support amount can have at most two decimal places.")
+                return redirect("application_details", app_id=app_id)
+
+            if suggested_amount > requested_budget:
+                messages.error(
+                    request,
+                    f"Suggested support amount (₹{suggested_amount:,.2f}) cannot exceed the amount requested by the student (₹{requested_budget:,.2f})."
+                )
+                return redirect("application_details", app_id=app_id)
+
+        now = timezone.now()
+        db_decision_status = "Rejected" if decision_status == "Not Selected" else decision_status
+
+        cursor.execute("""
+            INSERT INTO "REVIEWER_EVALUATIONS"
+            ("APPLICATION_ID", "USER_ID", "OPENED_AT", "SUGGESTED_AMOUNT", "COMMITTEE_EVALUATION_NOTES", "DECISION_STATUS", "UPDATED_AT")
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT ("APPLICATION_ID", "USER_ID")
+            DO UPDATE SET
+                "SUGGESTED_AMOUNT" = EXCLUDED."SUGGESTED_AMOUNT",
+                "COMMITTEE_EVALUATION_NOTES" = EXCLUDED."COMMITTEE_EVALUATION_NOTES",
+                "DECISION_STATUS" = EXCLUDED."DECISION_STATUS",
+                "OPENED_AT" = COALESCE("REVIEWER_EVALUATIONS"."OPENED_AT", EXCLUDED."OPENED_AT"),
+                "UPDATED_AT" = EXCLUDED."UPDATED_AT";
+        """, [app_id, user_id, now, suggested_amount, committee_evaluation_notes, decision_status, now])
+
+        # Reflect reviewer's saved decision status to the Budget Details section's Decision Status
+        cursor.execute("""
+            UPDATE "APPLICATIONS"
+            SET "DECISION_STATUS" = %s,
+                "UPDATED_AT" = %s
+            WHERE "ID" = %s
+        """, [db_decision_status, now, app_id])
+
+    messages.success(request, "Your recommendation and decision status have been saved.")
+    return redirect("application_details", app_id=app_id)
 
 
 @csrf_exempt
@@ -914,6 +1297,7 @@ def submit_final_approval(request, app_id):
     
     user_role = request.session.get('user_role')
     user_id = request.session.get('user_id')
+    user_email = request.session.get('user_email')
     
     program = _program_of(app_id)
     if program is None:
@@ -927,28 +1311,43 @@ def submit_final_approval(request, app_id):
         with transaction.atomic(), connection.cursor() as cursor:
             acm_budget.lock_ledger(cursor)
 
+            if not user_id and user_email:
+                cursor.execute('SELECT "ID" FROM "USERS" WHERE "EMAIL" = %s LIMIT 1', [user_email])
+                urow = cursor.fetchone()
+                if urow:
+                    user_id = urow[0]
+            elif user_id and not user_email:
+                cursor.execute('SELECT "EMAIL" FROM "USERS" WHERE "ID" = %s LIMIT 1', [user_id])
+                urow = cursor.fetchone()
+                if urow:
+                    user_email = urow[0]
+
             cursor.execute(
-                'SELECT "STATUS" FROM "APPLICATIONS" WHERE "ID" = %s FOR UPDATE',
+                'SELECT "STATUS", "TRAVEL_BUDGET" FROM "APPLICATIONS" WHERE "ID" = %s FOR UPDATE',
                 [app_id])
             status_row = cursor.fetchone()
             if not status_row:
                 return JsonResponse({"error": "Application not found"}, status=404)
-            if status_row[0] == "Accepted":
-                messages.info(request, "This application has already been accepted.")
+            if status_row[0] in ("Accepted", "Approved"):
+                messages.info(request, "This application has already been approved.")
                 return redirect('application_details', app_id=app_id)
-            if status_row[0] == "Rejected":
+            if status_row[0] in ("Rejected", "Not Selected"):
                 messages.error(request, "A rejected application cannot be approved.")
                 return redirect('application_details', app_id=app_id)
 
-            # Ensure at least one review exists
+            # Enforce Case 1 workflow: Chairman must complete and submit the Review/Rating Form first
             cursor.execute("""
-                SELECT COUNT(*) FROM "REVIEWS" WHERE "APPLICATION_ID" = %s
-            """, [app_id])
-            review_count = cursor.fetchone()[0]
-
-            if review_count == 0:
-                messages.error(request, "At least one review required before final approval.")
+                SELECT COUNT(*) FROM "REVIEWS"
+                WHERE "APPLICATION_ID" = %s AND "USER_ID" = %s
+            """, [app_id, user_id])
+            if cursor.fetchone()[0] == 0:
+                messages.error(
+                    request,
+                    "You must complete and submit the Review/Rating Form before providing final approval."
+                )
                 return redirect('application_details', app_id=app_id)
+
+            requested_budget = Decimal(str(status_row[1] or 0))
 
             amount = request.POST.get("amount")
             feedback = request.POST.get("feedback")
@@ -967,6 +1366,14 @@ def submit_final_approval(request, app_id):
             if amount_value <= 0:
                 messages.error(request, "Approved amount must be greater than zero.")
                 return redirect('application_details', app_id=app_id)
+
+            if amount_value > requested_budget:
+                messages.error(
+                    request,
+                    f"Approved support amount (₹{amount_value:,.2f}) cannot exceed the amount requested by the student (₹{requested_budget:,.2f})."
+                )
+                return redirect('application_details', app_id=app_id)
+
             if amount_value > Decimal("9999999999999.99"):
                 messages.error(request, "Approved amount exceeds the supported limit.")
                 return redirect('application_details', app_id=app_id)
@@ -1030,7 +1437,7 @@ def submit_final_approval(request, app_id):
 
         messages.success(
             request,
-            f"Application accepted with ₹{amount}. The applicant has NOT been notified yet — "
+            f"Application approved with ₹{amount}. The applicant has NOT been notified yet — "
             f"use 'Notify Applicant' below to send the decision.")
         return redirect('application_details', app_id=app_id)
 
@@ -1073,7 +1480,7 @@ def notify_applicant(request, app_id):
             (email, name, conference, tracking_code,
              paper_title, status, rejection_reason, notified_status) = row
 
-            if status not in ("Under Review", "Accepted", "Rejected"):
+            if status not in ("Under Review", "Pending", "Accepted", "Approved", "Rejected", "Not Selected"):
                 messages.error(
                     request, "There is no decision to communicate for this application yet.")
                 return redirect('application_details', app_id=app_id)
@@ -1083,13 +1490,13 @@ def notify_applicant(request, app_id):
             if status not in NOTIFY_PERMISSIONS.get(program_role, set()):
                 messages.error(
                     request,
-                    f"Only the Chairman can notify the applicant of a '{status}' decision.")
+                    f"Only the Chairman can notify the applicant of a '{get_status_display(status)}' decision.")
                 return redirect('application_details', app_id=app_id)
 
             # Guard against a second send for the same decision. Comparing against
             # the status rather than a bare timestamp means a later decision can
             # still be notified.
-            if notified_status == status:
+            if notified_status == status or (notified_status and get_status_display(notified_status) == get_status_display(status)):
                 messages.info(request, "The applicant has already been notified of this decision.")
                 return redirect('application_details', app_id=app_id)
 
@@ -1106,7 +1513,7 @@ def notify_applicant(request, app_id):
             venue_label = "Conference/Event" if is_rfg else "Conference"
             subject_line = f"Paper Title: {paper_title}" if paper_title else ""
 
-            if status == "Accepted":
+            if status in ("Accepted", "Approved"):
                 cursor.execute("""
                     SELECT "APPROVED_AMOUNT" FROM "FINAL_APPROVALS"
                     WHERE "APPLICATION_ID" = %s
@@ -1130,13 +1537,13 @@ Please login to view full details.
 Regards,
 {committee}
 """
-            elif status == "Rejected":
-                subject = f"Your {program_name} Application has been Rejected"
+            elif status in ("Rejected", "Not Selected"):
+                subject = f"Your {program_name} Application has been Not Selected"
                 body = f"""
 Dear {name},
 
 We regret to inform you that your {program_name} application relating to
-"{conference}" has been rejected.
+"{conference}" has not been selected.
 
 Tracking Code: {tracking_code}
 {subject_line}
@@ -1149,12 +1556,12 @@ You can view details in your application dashboard.
 Regards,
 {committee}
 """
-            else:  # Under Review
-                subject = f"Your {program_name} Application is Under Review"
+            else:  # Under Review / Pending
+                subject = f"Your {program_name} Application is Pending"
                 body = f"""
 Dear {name},
 
-Your {program_name} application relating to "{conference}" is now under review
+Your {program_name} application relating to "{conference}" is now pending review
 by our committee.
 
 Tracking Code: {tracking_code}
@@ -1184,7 +1591,7 @@ Regards,
                 WHERE "ID" = %s
             """, [timezone.now(), status, app_id])
 
-        messages.success(request, f"Applicant notified: {status}")
+        messages.success(request, f"Applicant notified: {get_status_display(status)}")
         return redirect('application_details', app_id=app_id)
 
     except Exception as e:
@@ -1256,7 +1663,7 @@ def reject_application(request, app_id):
         # sends it explicitly from the application page via notify_applicant.
         messages.success(
             request,
-            f"Application #{app_id} rejected. The applicant has NOT been notified yet — "
+            f"Application #{app_id} marked as Not Selected. The applicant has NOT been notified yet — "
             f"use 'Notify Applicant' on the application page to send the decision.")
 
         return redirect('dashboard')
@@ -1938,8 +2345,17 @@ def _fetch_export_rows(status=None, programs=None):
         clauses.append('a."PROGRAM" = ANY(%s)')
         params.append(programs)
     if status:
-        clauses.append('a."STATUS" = %s')
-        params.append(status)
+        if status in ("Drafted", "SUBMITTED"):
+            clauses.append('a."STATUS" IN (\'SUBMITTED\', \'Drafted\')')
+        elif status in ("Pending", "Under Review"):
+            clauses.append('a."STATUS" IN (\'Under Review\', \'Pending\')')
+        elif status in ("Approved", "Accepted", "APPROVED"):
+            clauses.append('a."STATUS" IN (\'Accepted\', \'Approved\', \'APPROVED\')')
+        elif status in ("Not Selected", "Rejected"):
+            clauses.append('a."STATUS" IN (\'Rejected\', \'Not Selected\')')
+        else:
+            clauses.append('a."STATUS" = %s')
+            params.append(status)
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
     sql += ' ORDER BY a."CREATED_AT" DESC'
@@ -1967,6 +2383,8 @@ def _clean_cell(value):
         return value.strftime("%Y-%m-%d")
     if isinstance(value, Decimal):
         return float(value)
+    if isinstance(value, str) and value in STATUS_DISPLAY:
+        return STATUS_DISPLAY[value]
     return value
 
 
@@ -2147,6 +2565,7 @@ def application_details_by_tracking(request, tracking_code):
         print(f"{'='*60}\n")
         
         with connection.cursor() as cursor:
+            ensure_reviewer_evaluations_table(cursor)
             # Fetch application by tracking code
             cursor.execute("""
                 SELECT *
@@ -2174,12 +2593,25 @@ def application_details_by_tracking(request, tracking_code):
                 return render(request, "404.html", {"message": "Application not found"}, status=404)
             
             application = dict(zip(colnames, row))
+            program = application.get('program') or permissions.PROGRAM_TRAVEL
+
+            # Resolve status display for student
+            computed_status = get_user_application_status(
+                raw_status=application.get("status"),
+                program=program,
+                user_id=None,
+                user_role=None,
+                application_id=application.get("id"),
+                cursor=cursor
+            )
+            application["status"] = computed_status
+            application["status_display"] = computed_status
+            application["notified_status_display"] = get_status_display(application.get("notified_status"))
             _localise_row(application, 'created_at', 'updated_at', 'reviewed_at', 'notified_at')
 
             # Same programme awareness as the authenticated detail view, so an
             # RFG applicant tracking their own application sees it labelled and
             # laid out as RFG rather than as an empty Travel form.
-            program = application.get('program') or permissions.PROGRAM_TRAVEL
             rfg_detail = None
             if program == permissions.PROGRAM_RFG:
                 cursor.execute(
@@ -2202,6 +2634,7 @@ def application_details_by_tracking(request, tracking_code):
                 "program": program,
                 "program_label": permissions.PROGRAM_LABELS.get(program, program),
                 "rfg_detail": rfg_detail,
+                "is_student": True,
             })
     
     except Exception as e:

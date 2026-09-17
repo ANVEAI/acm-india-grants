@@ -42,13 +42,10 @@ _FINANCE_PROGRAM_UNSET = object()
 # Statuses each programme role may communicate to the applicant. Mirrors the
 # behaviour that used to live in home.views.NOTIFY_PERMISSIONS.
 NOTIFY_PERMISSIONS = {
-    ROLE_CHAIRMAN: {"Under Review", "Accepted", "Rejected"},
-    ROLE_REVIEWER: {"Under Review"},
+    ROLE_CHAIRMAN: {"Under Review", "Pending", "Accepted", "Approved", "Rejected", "Not Selected"},
+    ROLE_REVIEWER: {"Under Review", "Pending"},
     ROLE_OBSERVER: set(),
 }
-
-
-
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------

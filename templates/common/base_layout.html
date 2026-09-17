@@ -154,13 +154,6 @@
                             <span class="nxl-mtext">Budget Management</span>
                         </a>
                     </li>
-                    {% elif can_view_budget %}
-                    <li class="nxl-item">
-                        <a href="{% url 'budget_management' %}" class="nxl-link">
-                            <span class="nxl-micon"><i class="feather-pie-chart"></i></span>
-                            <span class="nxl-mtext">Budget Overview</span>
-                        </a>
-                    </li>
                     {% endif %}
                     {% if can_access_help %}
                     <li class="nxl-item">

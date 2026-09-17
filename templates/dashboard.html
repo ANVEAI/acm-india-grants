@@ -69,6 +69,90 @@
     background: linear-gradient(135deg, #667eea, #764ba2) !important;
     color: #fff !important;
 }
+
+/* ===== BUDGET OVERVIEW ===== */
+.budget-page-title {
+    color: #25324b;
+    font-size: 1.35rem;
+    font-weight: 700;
+}
+
+.budget-metric,
+.budget-status {
+    background: #fff;
+    border: 1px solid #e7eaf0;
+    border-radius: 12px;
+    box-shadow: 0 4px 14px rgba(32, 43, 72, 0.05);
+}
+
+.budget-metric {
+    height: 100%;
+    padding: 1.25rem 1.5rem;
+    border-top: 4px solid #667eea;
+}
+
+.budget-metric.approved {
+    border-top-color: #8390a5;
+}
+
+.budget-metric.remaining {
+    border-top-color: #22a06b;
+}
+
+.budget-label {
+    color: #7a8496;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.055em;
+    text-transform: uppercase;
+}
+
+.budget-value {
+    margin: 0.45rem 0 0;
+    color: #25324b;
+    font-size: 1.55rem;
+    font-weight: 700;
+}
+
+.budget-metric.remaining .budget-value {
+    color: #198754;
+}
+
+.budget-progress {
+    height: 7px;
+    overflow: hidden;
+    background: #edf0f5;
+    border-radius: 10px;
+}
+
+.budget-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea, #7652aa);
+}
+
+.budget-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.2rem 1.4rem;
+}
+
+.budget-meta {
+    color: #7a8496;
+    font-size: 0.82rem;
+}
+
+@media (max-width: 767.98px) {
+    .budget-heading,
+    .budget-status {
+        align-items: flex-start !important;
+        flex-direction: column;
+    }
+    .budget-metric {
+        padding: 1.1rem;
+    }
+}
 </style>
 
 <div class="dashboard-content">
@@ -84,34 +168,100 @@
 
     <div class="col">
         <div class="card p-3 text-center h-100 mt-3 ms-3">
-            <h6>Submitted</h6>
-            <h3>{{ insights.submitted|default:"0" }}</h3>
+            <h6>Drafted</h6>
+            <h3>{{ insights.drafted|default:insights.submitted|default:"0" }}</h3>
         </div>
     </div>
 
     <div class="col">
         <div class="card p-3 text-center h-100 mt-3 ms-3">
-            <h6>Under Review</h6>
-            <h3>{{ insights.under_review|default:"0" }}</h3>
+            <h6>Pending</h6>
+            <h3>{{ insights.pending|default:insights.under_review|default:"0" }}</h3>
         </div>
     </div>
 
     <div class="col">
         <div class="card p-3 text-center h-100 mt-3 ms-3">
-            <h6>Accepted</h6>
+            <h6>Approved</h6>
             <h3>{{ insights.approved|default:"0" }}</h3>
         </div>
     </div>
 
     <div class="col">
         <div class="card p-3 text-center h-100 border-danger mt-3 ms-3">
-            <h6 class="text-danger">Rejected</h6>
-            <h3 class="text-danger">{{ insights.rejected|default:"0" }}</h3>
+            <h6 class="text-danger">Not Selected</h6>
+            <h3 class="text-danger">{{ insights.not_selected|default:insights.rejected|default:"0" }}</h3>
         </div>
     </div>
 </div>
 
+{% if can_view_budget and budgets %}
+<!-- ================= BUDGET OVERVIEW ================= -->
+<div class="ms-3 me-3 mb-4">
+    <div class="budget-heading d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+            <h4 class="budget-page-title mb-1">Budget Overview</h4>
+            <p class="text-muted small mb-0">
+                View the current budget status for all programmes.
+            </p>
+        </div>
+    </div>
 
+    {% for entry in budgets %}
+    <div class="{% if not forloop.last %}mb-4{% else %}mb-2{% endif %}">
+        <h5 class="fw-bold text-dark mb-3" style="font-size:1.1rem;">{{ entry.program_label }}</h5>
+
+        {% if not entry.budget.schema_ready %}
+        <div class="alert alert-warning" role="alert">
+            Budget information for {{ entry.program_label }} is currently unavailable.
+        </div>
+        {% else %}
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <section class="budget-metric">
+                    <div class="budget-label">Total Budget</div>
+                    <p class="budget-value">{% if entry.budget.configured %}{{ entry.budget.total_display }}{% else %}—{% endif %}</p>
+                </section>
+            </div>
+            <div class="col-md-4">
+                <section class="budget-metric approved">
+                    <div class="budget-label">Approved Grants</div>
+                    <p class="budget-value">{% if entry.budget.configured %}{{ entry.budget.spent_display }}{% else %}—{% endif %}</p>
+                </section>
+            </div>
+            <div class="col-md-4">
+                <section class="budget-metric remaining">
+                    <div class="budget-label">Remaining Budget</div>
+                    <p class="budget-value {% if entry.budget.configured and entry.budget.remaining < 0 %}text-danger{% endif %}">
+                        {% if entry.budget.configured %}{{ entry.budget.remaining_display }}{% else %}—{% endif %}
+                    </p>
+                </section>
+            </div>
+        </div>
+
+        {% if entry.budget.configured %}
+        <section class="budget-status">
+            <div class="flex-grow-1">
+                <div class="d-flex justify-content-between gap-3 mb-2">
+                    <span class="budget-label">Budget Used</span>
+                    <span class="budget-meta">{{ entry.budget.spent_display }} approved</span>
+                </div>
+                <div class="budget-progress" title="{{ entry.budget.spent_display }} approved">
+                    <div class="budget-progress-bar" style="width: {{ entry.budget.used_percent }}%"></div>
+                </div>
+                {% if entry.budget.updated_at %}
+                <div class="budget-meta mt-3">
+                    Last updated by {{ entry.budget.updated_by }} on {{ entry.budget.updated_at }}
+                </div>
+                {% endif %}
+            </div>
+        </section>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
 
 <!-- ================= EXPORT ================= -->
 <div class="d-flex justify-content-end gap-2 me-3 ms-3">
@@ -125,15 +275,15 @@
 
 <!-- ================= TABS ================= -->
 <ul class="nav nav-tabs mb-3"style="margin-top:2%; padding-left: 2%;">
-    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#submitted">Submitted</button></li>
-    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#under-review">Under Review</button></li>
-    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#accepted">Accepted</button></li>
-    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#rejected">Rejected</button></li>
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#submitted">Drafted</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#under-review">Pending</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#accepted">Approved</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#rejected">Not Selected</button></li>
 </ul>
 
 <div class="tab-content" >
 
-<!-- ================= SUBMITTED ================= -->
+<!-- ================= DRAFTED ================= -->
 <div class="tab-pane fade show active" id="submitted" style="margin-top:2%; padding-left: 1%;">
 <div class="card">
 <div class="table-responsive">
@@ -145,14 +295,14 @@
 </thead>
 <tbody>
 {% for app in applications %}
-{% if app.status == "SUBMITTED" %}
+{% if app.status == "SUBMITTED" or app.status == "Drafted" %}
 <tr>
 <td><span class="badge bg-secondary">{{ app.tracking_code }}</span></td>
 {% if show_program_column %}<td><span class="badge {% if app.program == "RFG" %}bg-dark{% else %}bg-primary{% endif %}">{{ app.program_label }}</span></td>{% endif %}
 <td>{{ app.applicant_name }}</td>
 <td>{{ app.paper_title|truncatewords:4 }}</td>
 <td>{{ app.conference_name }}</td>
-<td><span class="badge bg-secondary">Submitted</span></td>
+<td><span class="badge bg-secondary">Drafted</span></td>
 <td class="text-center">
     <a href="{% url 'application_details' app.id %}" class="btn btn-sm btn-primary w-100">Details</a>
     {% if app.program in decide_programs %}
@@ -168,7 +318,7 @@
 </div>
 </div>
 
-<!-- ================= UNDER REVIEW ================= -->
+<!-- ================= PENDING ================= -->
 <div class="tab-pane fade" id="under-review"style="margin-top:2%; padding-left: 1%;">
 <div class="card">
 <div class="table-responsive">
@@ -180,14 +330,14 @@
 </thead>
 <tbody>
 {% for app in applications %}
-{% if app.status == "Under Review" %}
+{% if app.status == "Under Review" or app.status == "Pending" %}
 <tr>
 <td><span class="badge bg-warning text-dark">{{ app.tracking_code }}</span></td>
 {% if show_program_column %}<td><span class="badge {% if app.program == "RFG" %}bg-dark{% else %}bg-primary{% endif %}">{{ app.program_label }}</span></td>{% endif %}
 <td>{{ app.applicant_name }}</td>
 <td>{{ app.paper_title|truncatewords:4 }}</td>
 <td>{{ app.conference_name }}</td>
-<td><span class="badge bg-warning text-dark">Under Review</span></td>
+<td><span class="badge bg-warning text-dark">Pending</span></td>
 <td class="text-center">
     <a href="{% url 'application_details' app.id %}" class="btn btn-sm btn-primary w-100">Details</a>
     {% if app.program in decide_programs %}
@@ -203,7 +353,7 @@
 </div>
 </div>
 
-<!-- ================= ACCEPTED ================= -->
+<!-- ================= APPROVED ================= -->
 <div class="tab-pane fade" id="accepted"style="margin-top:2%; padding-left: 1%;">
 <div class="card">
 <div class="table-responsive">
@@ -215,14 +365,14 @@
 </thead>
 <tbody>
 {% for app in applications %}
-{% if app.status == "Accepted" %}
+{% if app.status == "Accepted" or app.status == "Approved" %}
 <tr>
 <td><span class="badge bg-success">{{ app.tracking_code }}</span></td>
 {% if show_program_column %}<td><span class="badge {% if app.program == "RFG" %}bg-dark{% else %}bg-primary{% endif %}">{{ app.program_label }}</span></td>{% endif %}
 <td>{{ app.applicant_name }}</td>
 <td>{{ app.paper_title|truncatewords:4 }}</td>
 <td>{{ app.conference_name }}</td>
-<td><span class="badge bg-success">Accepted</span></td>
+<td><span class="badge bg-success">Approved</span></td>
 <td class="text-center">
 <a href="{% url 'application_details' app.id %}" class="btn btn-sm btn-primary">Details</a>
 </td>
@@ -235,7 +385,7 @@
 </div>
 </div>
 
-<!-- ================= REJECTED ================= -->
+<!-- ================= NOT SELECTED ================= -->
 <div class="tab-pane fade" id="rejected"style="margin-top:2%; padding-left: 1%;">
 <div class="card">
 <div class="table-responsive">
@@ -247,7 +397,7 @@
 </thead>
 <tbody>
 {% for app in applications %}
-{% if app.status == "Rejected" %}
+{% if app.status == "Rejected" or app.status == "Not Selected" %}
 <tr>
 <td><span class="badge bg-danger">{{ app.tracking_code }}</span></td>
 {% if show_program_column %}<td><span class="badge {% if app.program == "RFG" %}bg-dark{% else %}bg-primary{% endif %}">{{ app.program_label }}</span></td>{% endif %}
@@ -290,7 +440,7 @@ $(document).ready(function () {
 });
 
 function rejectApplication(appId, trackingCode) {
-    let reason = prompt(`Enter rejection reason for application #${trackingCode}:`);
+    let reason = prompt(`Enter reason for marking application #${trackingCode} as Not Selected:`);
     if (reason && reason.trim()) {
         const form = document.createElement('form');
         form.method = 'POST';
