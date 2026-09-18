@@ -491,7 +491,7 @@
                         {% endif %}
                     </div>
 
-                    {% if application.budget_edited_at and application.budget_edited_by %}
+                    {% if application.budget_edited_at and application.budget_edited_by and "Chairman" in application.budget_edited_by %}
                     <div class="border-top pt-3 mt-1 d-flex align-items-center gap-2 text-muted small">
                         <i class="feather-clock"></i>
                         <span>
@@ -659,21 +659,26 @@
                                         </label>
                                         <select id="revDecisionStatus" name="decision_status" class="form-select" required>
                                             <option value="Drafted" {% if current_user_eval.decision_status == 'Drafted' or not current_user_eval.decision_status and application.decision_status == 'Drafted' %}selected{% endif %}>Drafted</option>
-                                            <option value="Pending" {% if current_user_eval.decision_status == 'Pending' or not current_user_eval.decision_status and application.decision_status == 'Pending' or not current_user_eval.decision_status and application.decision_status == 'Under Review' %}selected{% endif %}>Pending</option>
-                                            <option value="Approved" {% if current_user_eval.decision_status == 'Approved' or not current_user_eval.decision_status and application.decision_status == 'Approved' %}selected{% endif %}>Approved</option>
-                                            <option value="Not Selected" {% if current_user_eval.decision_status == 'Not Selected' or not current_user_eval.decision_status and application.decision_status == 'Not Selected' or not current_user_eval.decision_status and application.decision_status == 'Rejected' %}selected{% endif %}>Not Selected</option>
+                                            <option value="Pending" {% if current_user_eval.decision_status == 'Pending' or not current_user_eval.decision_status and application.decision_status != 'Drafted' %}selected{% endif %}>Pending</option>
+                                            <option value="Approved" {% if current_user_eval.decision_status == 'Approved' %}selected{% endif %}>Approved</option>
+                                            <option value="Not Selected" {% if current_user_eval.decision_status == 'Not Selected' or current_user_eval.decision_status == 'Rejected' %}selected{% endif %}>Not Selected</option>
                                         </select>
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label for="revSuggestedAmount" class="form-label fw-bold">
-                                            Suggested Support Amount (₹) <span class="text-danger">*</span>
+                                            Suggested Support Amount (₹) <span id="revSuggestedAmountStar" class="text-danger" {% if current_user_eval.decision_status == 'Not Selected' or current_user_eval.decision_status == 'Rejected' %}style="display: none;"{% endif %}>*</span>
                                         </label>
                                         <input type="number" id="revSuggestedAmount" name="suggested_amount"
                                                class="form-control" min="0.01" max="{{ application.travel_budget }}" step="0.01"
-                                               value="{{ current_user_eval.suggested_amount|default:'' }}"
-                                               placeholder="Enter suggested amount" required>
-                                        <small class="form-text text-muted">
+                                               value="{% if current_user_eval.decision_status != 'Not Selected' and current_user_eval.decision_status != 'Rejected' %}{{ current_user_eval.suggested_amount|default:'' }}{% endif %}"
+                                               placeholder="Enter suggested amount"
+                                               {% if current_user_eval.decision_status == 'Not Selected' or current_user_eval.decision_status == 'Rejected' %}disabled{% else %}required{% endif %}>
+                                        <small id="revSuggestedAmountHelp" class="form-text text-muted">
+                                            {% if current_user_eval.decision_status == 'Not Selected' or current_user_eval.decision_status == 'Rejected' %}
+                                            Suggested support amount is not applicable when status is Not Selected.
+                                            {% else %}
                                             Requested by student: <strong>₹{{ application.travel_budget }}</strong>. Suggested amount cannot exceed requested amount.
+                                            {% endif %}
                                         </small>
                                     </div>
                                     <div class="col-12 mb-3">
@@ -990,11 +995,54 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     const revForm = document.getElementById('reviewerEvalForm');
+    const revStatusSelect = document.getElementById('revDecisionStatus');
+    const revAmountInput = document.getElementById('revSuggestedAmount');
+    const revAmountStar = document.getElementById('revSuggestedAmountStar');
+    const revAmountHelp = document.getElementById('revSuggestedAmountHelp');
+
+    if (revStatusSelect && revAmountInput) {
+        let revStoredAmount = revAmountInput.value;
+
+        function updateRevAmountState() {
+            if (revStatusSelect.value === 'Not Selected') {
+                if (revAmountInput.value) {
+                    revStoredAmount = revAmountInput.value;
+                }
+                revAmountInput.value = '';
+                revAmountInput.setAttribute('disabled', 'disabled');
+                revAmountInput.removeAttribute('required');
+                if (revAmountStar) {
+                    revAmountStar.style.display = 'none';
+                }
+                if (revAmountHelp) {
+                    revAmountHelp.textContent = 'Suggested support amount is not applicable when status is Not Selected.';
+                }
+            } else {
+                revAmountInput.removeAttribute('disabled');
+                revAmountInput.setAttribute('required', 'required');
+                if (!revAmountInput.value && revStoredAmount) {
+                    revAmountInput.value = revStoredAmount;
+                }
+                if (revAmountStar) {
+                    revAmountStar.style.display = 'inline';
+                }
+                if (revAmountHelp) {
+                    revAmountHelp.innerHTML = 'Requested by student: <strong>₹{{ application.travel_budget }}</strong>. Suggested amount cannot exceed requested amount.';
+                }
+            }
+        }
+
+        revStatusSelect.addEventListener('change', updateRevAmountState);
+        updateRevAmountState();
+    }
+
     if (revForm) {
         revForm.addEventListener('submit', function(e) {
-            const revAmountInput = document.getElementById('revSuggestedAmount');
+            if (revStatusSelect && revStatusSelect.value === 'Not Selected') {
+                return true;
+            }
             const reqBudget = parseFloat("{{ application.travel_budget|default:'0' }}");
-            if (revAmountInput && reqBudget > 0) {
+            if (revAmountInput && !revAmountInput.disabled && reqBudget > 0) {
                 const val = parseFloat(revAmountInput.value);
                 if (val > reqBudget) {
                     e.preventDefault();

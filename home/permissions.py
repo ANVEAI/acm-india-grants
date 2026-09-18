@@ -235,10 +235,10 @@ def can_review(request, program):
 
 
 def can_edit_budget(request, program):
-    """Edit applicant-supplied budget fields for this programme."""
+    """Edit committee-supplied budget fields for this programme. Chairman only."""
     if is_system_reviewer(request) or finance_program(request) is not None:
         return False
-    return role_for(request, program) in (ROLE_CHAIRMAN, ROLE_REVIEWER)
+    return role_for(request, program) == ROLE_CHAIRMAN
 
 
 def can_access_help(request):

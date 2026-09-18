@@ -125,6 +125,14 @@ def ensure_reviewer_evaluations_table(cursor):
     """)
     cursor.execute('ALTER TABLE public."REVIEWER_EVALUATIONS" ADD COLUMN IF NOT EXISTS "DECISION_STATUS" character varying(50);')
     cursor.execute('ALTER TABLE public."APPLICATIONS" ALTER COLUMN "DECISION_STATUS" SET DEFAULT \'Drafted\';')
+    cursor.execute('UPDATE public."APPLICATIONS" SET "BUDGET_EDITED_BY" = NULL, "BUDGET_EDITED_AT" = NULL WHERE "BUDGET_EDITED_BY" LIKE \'%Reviewer%\';')
+    cursor.execute("""
+        UPDATE public."APPLICATIONS"
+        SET "DECISION_STATUS" = 'Pending'
+        WHERE "STATUS" = 'Under Review'
+          AND "DECISION_STATUS" NOT IN ('Pending', 'Drafted')
+          AND ("BUDGET_EDITED_BY" IS NULL OR "BUDGET_EDITED_BY" NOT LIKE '%Chairman%');
+    """)
 
 
 def get_user_application_status(
@@ -653,15 +661,15 @@ def application_details(request, app_id):
                 cursor.execute("""
                     UPDATE "APPLICATIONS"
                     SET
-                        "STATUS" = 'Under Review',
+                        "STATUS" = CASE WHEN "STATUS" IN ('SUBMITTED', 'Drafted') THEN 'Under Review' ELSE "STATUS" END,
                         "DECISION_STATUS" = CASE
-                            WHEN "DECISION_STATUS" IN ('SUBMITTED', 'Drafted', 'Pending', '') OR "DECISION_STATUS" IS NULL THEN 'Pending'
+                            WHEN "DECISION_STATUS" IN ('SUBMITTED', 'Drafted', '') OR "DECISION_STATUS" IS NULL THEN 'Pending'
                             ELSE "DECISION_STATUS"
                         END,
                         "REVIEWED_ONCE" = TRUE,
                         "REVIEWED_AT" = COALESCE("REVIEWED_AT", %s)
                     WHERE "ID" = %s
-                      AND "STATUS" IN ('SUBMITTED', 'Drafted');
+                      AND "STATUS" NOT IN ('Accepted', 'Approved', 'Rejected');
                 """, [now_dt, app_id])
 
         # Fetch application
@@ -678,15 +686,6 @@ def application_details(request, app_id):
         colnames = [desc[0].lower() for desc in cursor.description]
         application = dict(zip(colnames, row))
 
-        # Check for reviewer evaluations saved decision_status
-        cursor.execute("""
-            SELECT "DECISION_STATUS"
-            FROM "REVIEWER_EVALUATIONS"
-            WHERE "APPLICATION_ID" = %s AND "DECISION_STATUS" IS NOT NULL
-            ORDER BY "UPDATED_AT" DESC LIMIT 1;
-        """, [app_id])
-        latest_rev_decision = cursor.fetchone()
-
         # Resolve status display per user
         computed_status = get_user_application_status(
             raw_status=application.get("status"),
@@ -701,19 +700,25 @@ def application_details(request, app_id):
         application["notified_status_display"] = get_status_display(application.get("notified_status"))
 
         # Resolve Decision Status for Budget Details section:
+        cursor.execute("""
+            SELECT COUNT(*) FROM "FINAL_APPROVALS" WHERE "APPLICATION_ID" = %s
+        """, [app_id])
+        has_fa_record = cursor.fetchone()[0] > 0
+
         raw_app_status = row[colnames.index("status")] if "status" in colnames else application.get("status")
         db_decision_status = row[colnames.index("decision_status")] if "decision_status" in colnames else application.get("decision_status")
+        budget_edited_by = application.get("budget_edited_by") or ""
+        is_chairman_budget_edit = "Chairman" in budget_edited_by
 
-        if application.get("budget_edited_by"):
-            application["decision_status"] = get_status_display(application.get("decision_status"))
-        elif raw_app_status in ("Accepted", "Approved", "APPROVED") or db_decision_status in ("Accepted", "Approved"):
+        if has_fa_record or raw_app_status in ("Accepted", "Approved", "APPROVED"):
             application["decision_status"] = "Approved"
-        elif raw_app_status in ("Rejected", "Not Selected") or db_decision_status in ("Rejected", "Not Selected"):
+        elif raw_app_status in ("Rejected", "Not Selected"):
             application["decision_status"] = "Not Selected"
-        elif latest_rev_decision and latest_rev_decision[0]:
-            application["decision_status"] = get_status_display(latest_rev_decision[0])
+        elif is_chairman_budget_edit and db_decision_status in ("Approved", "Rejected", "Not Selected", "Pending", "Drafted"):
+            application["decision_status"] = get_status_display(db_decision_status)
         else:
-            # Check if all active reviewers for this program have opened
+            # Chairman has not decided yet.
+            # Decision Status in Budget Details depends strictly on whether all reviewers opened:
             cursor.execute("""
                 SELECT upr."USER_ID"
                 FROM "USER_PROGRAM_ROLES" upr
@@ -731,8 +736,22 @@ def application_details(request, app_id):
 
             if len(all_assigned_revs) > 0 and len(all_opened_revs) >= len(all_assigned_revs):
                 application["decision_status"] = "Pending"
+                if db_decision_status != 'Pending' and raw_app_status not in ("Accepted", "Approved", "Rejected"):
+                    cursor.execute("""
+                        UPDATE "APPLICATIONS"
+                        SET "DECISION_STATUS" = 'Pending',
+                            "STATUS" = CASE WHEN "STATUS" IN ('SUBMITTED', 'Drafted') THEN 'Under Review' ELSE "STATUS" END
+                        WHERE "ID" = %s;
+                    """, [app_id])
             else:
                 application["decision_status"] = "Drafted"
+                if db_decision_status != 'Drafted' and raw_app_status not in ("Accepted", "Approved", "Rejected"):
+                    cursor.execute("""
+                        UPDATE "APPLICATIONS"
+                        SET "DECISION_STATUS" = 'Drafted'
+                        WHERE "ID" = %s;
+                    """, [app_id])
+
 
         _localise_row(
             application,
@@ -1159,7 +1178,9 @@ def save_reviewer_evaluation(request, app_id):
             return redirect("application_details", app_id=app_id)
 
         suggested_amount = None
-        if suggested_amount_raw:
+        if decision_status in ("Not Selected", "Rejected"):
+            suggested_amount = None
+        elif suggested_amount_raw:
             try:
                 suggested_amount = Decimal(suggested_amount_raw)
                 if not suggested_amount.is_finite() or suggested_amount <= 0:
@@ -1179,6 +1200,7 @@ def save_reviewer_evaluation(request, app_id):
                 )
                 return redirect("application_details", app_id=app_id)
 
+
         now = timezone.now()
         db_decision_status = "Rejected" if decision_status == "Not Selected" else decision_status
 
@@ -1195,13 +1217,37 @@ def save_reviewer_evaluation(request, app_id):
                 "UPDATED_AT" = EXCLUDED."UPDATED_AT";
         """, [app_id, user_id, now, suggested_amount, committee_evaluation_notes, decision_status, now])
 
-        # Reflect reviewer's saved decision status to the Budget Details section's Decision Status
+        # Ensure that if all reviewers have opened, application status is Under Review and decision status is Pending (if not yet decided by Chairman)
         cursor.execute("""
-            UPDATE "APPLICATIONS"
-            SET "DECISION_STATUS" = %s,
-                "UPDATED_AT" = %s
-            WHERE "ID" = %s
-        """, [db_decision_status, now, app_id])
+            SELECT upr."USER_ID"
+            FROM "USER_PROGRAM_ROLES" upr
+            JOIN "USERS" u ON u."ID" = upr."USER_ID"
+            WHERE upr."PROGRAM" = %s AND upr."ROLE" = 'Reviewer' AND (u."STATUS" = 'Active' OR u."STATUS" IS NULL);
+        """, [program])
+        assigned_revs = set(r[0] for r in cursor.fetchall())
+
+        cursor.execute("""
+            SELECT re."USER_ID"
+            FROM "REVIEWER_EVALUATIONS" re
+            WHERE re."APPLICATION_ID" = %s AND re."OPENED_AT" IS NOT NULL;
+        """, [app_id])
+        opened_revs = set(r[0] for r in cursor.fetchall()) & assigned_revs
+
+        if len(assigned_revs) > 0 and len(opened_revs) >= len(assigned_revs):
+            cursor.execute("""
+                UPDATE "APPLICATIONS"
+                SET
+                    "STATUS" = CASE WHEN "STATUS" IN ('SUBMITTED', 'Drafted') THEN 'Under Review' ELSE "STATUS" END,
+                    "DECISION_STATUS" = CASE
+                        WHEN "DECISION_STATUS" IN ('SUBMITTED', 'Drafted', '') OR "DECISION_STATUS" IS NULL THEN 'Pending'
+                        ELSE "DECISION_STATUS"
+                    END,
+                    "REVIEWED_ONCE" = TRUE,
+                    "REVIEWED_AT" = COALESCE("REVIEWED_AT", %s)
+                WHERE "ID" = %s
+                  AND "STATUS" NOT IN ('Accepted', 'Approved', 'Rejected');
+            """, [now, app_id])
+
 
     messages.success(request, "Your recommendation and decision status have been saved.")
     return redirect("application_details", app_id=app_id)
