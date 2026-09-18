@@ -356,19 +356,12 @@ def send_submission_email(subject, message, recipient_list, context=""):
     application row is already committed at this point, so a mail outage must
     not turn a successful submission into a 500 for the applicant.
     """
-    from django.core.mail import send_mail as _send_mail
-    from django.conf import settings as _settings
+    from home import mailer
 
     if not recipient_list:
         return False
     try:
-        sent = _send_mail(
-            subject=subject,
-            message=message,
-            from_email=_settings.DEFAULT_FROM_EMAIL,
-            recipient_list=recipient_list,
-            fail_silently=True,
-        )
+        sent = mailer.send(subject, message, recipient_list, fail_silently=True)
     except Exception:
         logger.exception("Submission email failed (%s) to %s", context, recipient_list)
         return False

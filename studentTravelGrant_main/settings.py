@@ -250,6 +250,11 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')  # Gmail app password
 
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL') or EMAIL_HOST_USER
 
+# Where a reply to a notification should land. The From address is a Gmail
+# account shown under a display name, not a real no-reply mailbox, so replies
+# have to be pointed somewhere a human reads. Empty means no Reply-To header.
+REPLY_TO_EMAIL = os.getenv('REPLY_TO_EMAIL', '')
+
 
 
 

@@ -34,7 +34,8 @@ from django.core.validators import validate_email
 from django.views.decorators.cache import never_cache
 from functools import wraps
 
-from home import permissions, budget as acm_budget
+from home import permissions
+from home import mailer, budget as acm_budget
 from backend import rfg
 
 
@@ -1636,13 +1637,7 @@ Regards,
 {committee}
 """
 
-            send_mail(
-                subject=subject,
-                message=body,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[email],
-                fail_silently=False,
-            )
+            mailer.send(subject, body, [email], fail_silently=False)
 
             # Recorded only after the mail actually went out.
             cursor.execute("""
