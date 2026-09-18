@@ -886,6 +886,13 @@ def application_details(request, app_id):
         if is_already_approved:
             for rev in reviewer_evaluations:
                 rev["decision_status"] = "Approved By Chairman"
+        elif is_rejected:
+            # Mirrors the approved case above: once the Chairman has decided,
+            # the reviewer cards show the decision rather than each reviewer's
+            # own recommendation. elif, not if, so approval keeps precedence if
+            # a row somehow satisfies both.
+            for rev in reviewer_evaluations:
+                rev["decision_status"] = "Not Selected By Chairman"
 
     return render(request, "details.html", {
         "application": application,

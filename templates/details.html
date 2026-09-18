@@ -599,10 +599,17 @@
                                             Approved By Chairman
                                         </span>
                                     </div>
+                                    {% elif is_rejected or application.status == 'Rejected' or application.status == 'Not Selected' or application.decision_status == 'Rejected' or application.decision_status == 'Not Selected' %}
+                                    <div class="mb-2">
+                                        <label class="text-muted small fw-bold d-block mb-1">Recommended Decision</label>
+                                        <span class="badge bg-danger">
+                                            Not Selected By Chairman
+                                        </span>
+                                    </div>
                                     {% elif rev.decision_status %}
                                     <div class="mb-2">
                                         <label class="text-muted small fw-bold d-block mb-1">Recommended Decision</label>
-                                        <span class="badge {% if rev.decision_status == 'Approved' or rev.decision_status == 'Approved By Chairman' %}bg-success{% elif rev.decision_status == 'Not Selected' or rev.decision_status == 'Rejected' %}bg-danger{% elif rev.decision_status == 'Drafted' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">
+                                        <span class="badge {% if rev.decision_status == 'Approved' or rev.decision_status == 'Approved By Chairman' %}bg-success{% elif rev.decision_status == 'Not Selected' or rev.decision_status == 'Rejected' or rev.decision_status == 'Not Selected By Chairman' %}bg-danger{% elif rev.decision_status == 'Drafted' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">
                                             {{ rev.decision_status }}
                                         </span>
                                     </div>
