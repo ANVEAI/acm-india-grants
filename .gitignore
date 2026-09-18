@@ -41,6 +41,8 @@ staticfiles/
 # safe to version: the seed creates only .invalid accounts for local use.
 !schema.sql
 !seed_local.sql
+!add_budget_management.sql
+!budget_management_schema.sql
 !budget_management_schema.sql
 
 # ---------------------------------------------------------------------------

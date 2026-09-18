@@ -99,6 +99,10 @@ jobs:
           check "/api/login/"         "200"
           check "/dashboard/"         "302 403"
           check "/profile/"           "302 403"
+          # The public tracking view, which is where a schema/code mismatch
+          # shows up first. A code that does not exist still exercises the whole
+          # view, so this needs no fixture -- it only must not be a 5xx.
+          check "/application-details/HEALTHCHECK-NO-SUCH-CODE/" "200 404"
           exit $fail
 
       - name: Promote candidate to 100% traffic

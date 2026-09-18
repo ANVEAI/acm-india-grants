@@ -106,8 +106,30 @@ def get_status_display(status):
     return STATUS_DISPLAY.get(status, status)
 
 
+_REVIEWER_EVALUATIONS_READY = False
+
+
 def ensure_reviewer_evaluations_table(cursor):
-    """Ensure the REVIEWER_EVALUATIONS table exists in PostgreSQL."""
+    """Safety net for databases that predate add_budget_management.sql.
+
+    The schema is owned by that migration, applied to Cloud SQL the way every
+    other schema change in this project is. This only creates the table when it
+    is genuinely absent, so a fresh local database still works.
+
+    It deliberately does nothing else. The version this replaces also reset a
+    column default and ran two UPDATEs against APPLICATIONS on every call -- and
+    it is called from the dashboard, the detail page, the evaluation save and
+    the public tracking page. Audit fields were cleared and decision status
+    rewritten on every page load, and it 500'd outright while DECISION_STATUS
+    did not exist. Those backfills now live in the migration and run once.
+
+    Guarded to run at most once per process: DDL per request takes a catalogue
+    lock for no benefit.
+    """
+    global _REVIEWER_EVALUATIONS_READY
+    if _REVIEWER_EVALUATIONS_READY:
+        return
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS public."REVIEWER_EVALUATIONS" (
             "ID" bigserial PRIMARY KEY,
@@ -124,15 +146,7 @@ def ensure_reviewer_evaluations_table(cursor):
         );
     """)
     cursor.execute('ALTER TABLE public."REVIEWER_EVALUATIONS" ADD COLUMN IF NOT EXISTS "DECISION_STATUS" character varying(50);')
-    cursor.execute('ALTER TABLE public."APPLICATIONS" ALTER COLUMN "DECISION_STATUS" SET DEFAULT \'Drafted\';')
-    cursor.execute('UPDATE public."APPLICATIONS" SET "BUDGET_EDITED_BY" = NULL, "BUDGET_EDITED_AT" = NULL WHERE "BUDGET_EDITED_BY" LIKE \'%Reviewer%\';')
-    cursor.execute("""
-        UPDATE public."APPLICATIONS"
-        SET "DECISION_STATUS" = 'Pending'
-        WHERE "STATUS" = 'Under Review'
-          AND "DECISION_STATUS" NOT IN ('Pending', 'Drafted')
-          AND ("BUDGET_EDITED_BY" IS NULL OR "BUDGET_EDITED_BY" NOT LIKE '%Chairman%');
-    """)
+    _REVIEWER_EVALUATIONS_READY = True
 
 
 def get_user_application_status(

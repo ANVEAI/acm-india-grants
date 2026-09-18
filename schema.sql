@@ -1408,3 +1408,20 @@ CREATE TABLE IF NOT EXISTS public."REVIEWER_EVALUATIONS" (
     CONSTRAINT "REVIEWER_EVALUATIONS_app_fk" FOREIGN KEY ("APPLICATION_ID") REFERENCES "APPLICATIONS"("ID") ON DELETE CASCADE
 );
 
+
+--
+-- DOCUMENTS_UPLOADED: read by list_uploaded_documents() for the help page.
+-- The code only SELECTs from it and nothing else in the repository defines it,
+-- so these are exactly the columns that query names. Without the table the help
+-- page relies on a surrounding try/except to swallow a missing-table error.
+--
+CREATE TABLE IF NOT EXISTS public."DOCUMENTS_UPLOADED" (
+    "ID" bigserial PRIMARY KEY,
+    "TITLE" character varying(255),
+    "CATEGORY" character varying(100),
+    "PDF_NAME" character varying(500),
+    "DOMAIN" character varying(100),
+    "UPLOADED_BY" character varying(255),
+    "CREATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    "UPDATED_AT" timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
