@@ -1,5 +1,6 @@
 {% extends "common/base_layout.html" %}
 {% load static %}
+{% load file_links %}
 
 {% block title %}Application Details - {{ program_label|default:"ACM India Grants" }}{% endblock %}
 
@@ -316,12 +317,12 @@
                         <div class="col-12">
                             <div class="d-flex gap-2 flex-wrap">
                                 {% if rfg_detail.charges_doc_path %}
-                                <a href="/media/{{ rfg_detail.charges_doc_path }}" target="_blank" class="btn btn-dark">
+                                <a href="{{ rfg_detail.charges_doc_path|file_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-dark">
                                     <i class="feather-download me-2"></i>Charges Document
                                 </a>
                                 {% endif %}
                                 {% if rfg_detail.invitation_letter_path %}
-                                <a href="/media/{{ rfg_detail.invitation_letter_path }}" target="_blank" class="btn btn-dark">
+                                <a href="{{ rfg_detail.invitation_letter_path|file_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-dark">
                                     <i class="feather-download me-2"></i>Invitation Letter
                                 </a>
                                 {% endif %}
@@ -723,14 +724,14 @@
                 <div class="card-body">
                     <div class="d-flex gap-2 flex-wrap">
                         {% if application.paper_file_path %}
-                        <a href="/media/{{ application.paper_file_path }}" target="_blank" class="btn btn-primary">
+                        <a href="{{ application.paper_file_path|file_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
                             <i class="feather-download me-2"></i>Download Paper
                         </a>
                         {% else %}
                         <span class="text-muted">No paper file uploaded</span>
                         {% endif %}
                         {% if application.acceptance_letter_path %}
-                        <a href="/media/{{ application.acceptance_letter_path }}" target="_blank" class="btn btn-success">
+                        <a href="{{ application.acceptance_letter_path|file_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-success">
                             <i class="feather-download me-2"></i>Download Acceptance Letter
                         </a>
                         {% else %}
