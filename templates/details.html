@@ -426,7 +426,7 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="text-muted small fw-bold d-block mb-1">Travel Budget</label>
-                            <p class="fw-500 text-dark fs-5">₹{{ application.travel_budget }}</p>
+                            <p class="fw-500 text-dark fs-5">{% if application.travel_budget %}₹{{ application.travel_budget }}{% else %}<span class="text-muted fs-6">Not given in rupees</span>{% endif %}</p>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="text-muted small fw-bold d-block mb-1">Registration Fee</label>
@@ -525,7 +525,7 @@
                                            placeholder="Enter approved amount"
                                            {% if application.decision_status != 'Approved' %}disabled{% endif %}>
                                     <small id="approvedSupportAmountHelp" class="text-muted">
-                                        Requested by student: ₹{{ application.travel_budget }}. Approved amount cannot exceed requested amount.
+                                        Requested by student: {% if application.travel_budget %}₹{{ application.travel_budget }}{% else %}not given in rupees{% endif %}. Approved amount cannot exceed requested amount.
                                     </small>
                                 </div>
                                 <div class="col-12 mb-3">
@@ -685,7 +685,7 @@
                                             {% if current_user_eval.decision_status == 'Not Selected' or current_user_eval.decision_status == 'Rejected' %}
                                             Suggested support amount is not applicable when status is Not Selected.
                                             {% else %}
-                                            Requested by student: <strong>₹{{ application.travel_budget }}</strong>. Suggested amount cannot exceed requested amount.
+                                            Requested by student: <strong>{% if application.travel_budget %}₹{{ application.travel_budget }}{% else %}not given in rupees{% endif %}</strong>. Suggested amount cannot exceed requested amount.
                                             {% endif %}
                                         </small>
                                     </div>
@@ -862,9 +862,9 @@
                                     <label class="fw-bold">Approved Amount (₹) <span class="text-danger">*</span></label>
                                     <input type="number" name="amount" class="form-control"
                                            min="0.01" max="{{ application.travel_budget }}" step="0.01" required
-                                           placeholder="Enter approved amount (up to ₹{{ application.travel_budget }})">
+                                           placeholder="{% if application.travel_budget %}Enter approved amount (up to ₹{{ application.travel_budget }}){% else %}Requested amount not given in rupees{% endif %}">
                                     <small class="text-muted">
-                                        Requested by student: <strong>₹{{ application.travel_budget }}</strong>.
+                                        Requested by student: <strong>{% if application.travel_budget %}₹{{ application.travel_budget }}{% else %}not given in rupees{% endif %}</strong>.
                                         Approved amount cannot exceed requested amount.
                                         {% if program == 'RFG' %}RFG approvals also cannot exceed ₹{{ rfg_cap }}.{% endif %}
                                     </small>
@@ -1035,7 +1035,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     revAmountStar.style.display = 'inline';
                 }
                 if (revAmountHelp) {
-                    revAmountHelp.innerHTML = 'Requested by student: <strong>₹{{ application.travel_budget }}</strong>. Suggested amount cannot exceed requested amount.';
+                    revAmountHelp.innerHTML = 'Requested by student: <strong>{% if application.travel_budget %}₹{{ application.travel_budget }}{% else %}not given in rupees{% endif %}</strong>. Suggested amount cannot exceed requested amount.';
                 }
             }
         }
